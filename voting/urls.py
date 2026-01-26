@@ -4,7 +4,7 @@ from .views import (
     AddVoteAPIView,
     ActiveRoundParticipants,
     ActiveRoundInfo,
-    ActiveRoundsList,  # раскомментируй, если используешь
+    ActiveRoundsList,
     StartRoundAPIView,
     EndRoundAPIView,
     AddParticipantAPIView,

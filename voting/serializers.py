@@ -3,17 +3,11 @@ from .models import Vote, Participant, Round, Campaign
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
+    order_number = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Participant
-        fields = ["id", "full_name", "description"]
-
-
-class SimpleVoteSerializer(serializers.ModelSerializer):
-    participant_name = serializers.CharField(source="participant.full_name", read_only=True)
-
-    class Meta:
-        model = Vote
-        fields = ["id", "participant", "participant_name", "user_telegram_id", "created_at"]
+        fields = ["id", "order_number", "full_name", "description"]
 
 
 class VoteCreateSerializer(serializers.ModelSerializer):
@@ -30,12 +24,18 @@ class VoteCreateSerializer(serializers.ModelSerializer):
         return data
 
 
-class WinnerSerializer(serializers.Serializer):
-    participant_id = serializers.IntegerField()
-    full_name = serializers.CharField()
-    votes = serializers.IntegerField()
-
 class CampaignSerializer(serializers.ModelSerializer):
+    order_number = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Campaign
-        fields = ['id', 'name', 'admin_telegram_id', 'is_active']
+        fields = ["id", "order_number", "name", "admin_telegram_id", "is_active"]
+
+
+class RoundSerializer(serializers.ModelSerializer):
+    campaign_name = serializers.CharField(source="campaign.name", read_only=True)
+    campaign_order_number = serializers.IntegerField(source="campaign.order_number", read_only=True)
+
+    class Meta:
+        model = Round
+        fields = ["id", "number", "campaign_name", "campaign_order_number", "status", "started_at", "ended_at"]

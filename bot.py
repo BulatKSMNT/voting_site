@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton,
-    CallbackQuery
+    CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -139,19 +139,33 @@ async def transfer_winners_to_round(winners: List[Dict], target_round_id: int) -
 
 
 # ──────────────────────────────────────────────
-# ОБЩИЕ КОМАНДЫ (без изменений)
+# ОБЩИЕ КОМАНДЫ
 # ──────────────────────────────────────────────
+
+vote_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Проголосовать")],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
+
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
         "Привет! 👋 Это бот для голосования.\n\n"
-        "Что можно делать:\n"
-        "• /vote /list /participants — посмотреть текущий раунд и проголосовать\n"
-        "• /help — все доступные команды\n"
-        "• /myid — узнать свой Telegram ID\n\n"
+       
+        "• /vote /list /participants — Можно посмотреть текущий раунд и проголосовать\n",
+        #"• /help — все доступные команды\n"
+        #"• /myid — узнать свой Telegram ID\n\n",
+        reply_markup = vote_keyboard
     )
 
+@dp.message(lambda message: message.text == "Проголосовать")
+async def cmd_vote_button(message: Message):
+    # Просто перенаправляем на команду /vote
+    await cmd_show_participants(message)
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -167,6 +181,7 @@ async def cmd_help(message: Message):
             [InlineKeyboardButton(text="Добавление участников", callback_data="help_add_participant")],
         ])
     await message.answer("📖 Помощь — выберите пункт:", reply_markup=kb)
+    await message.answer("Используй клавиатуру внизу для быстрого доступа", reply_markup=vote_keyboard)
 
 
 @dp.callback_query(lambda c: c.data.startswith("help_"))
@@ -187,7 +202,7 @@ async def process_help_callback(callback: CallbackQuery):
 
 @dp.message(Command("myid"))
 async def cmd_myid(message: Message):
-    await message.answer(f"Ваш Telegram ID: **{message.from_user.id}**")
+    await message.answer(f"Ваш Telegram ID: **{message.from_user.id}**", reply_markup=vote_keyboard)
 
 
 # ──────────────────────────────────────────────
@@ -203,7 +218,7 @@ async def cmd_show_participants(message: Message):
         r.raise_for_status()
         data = r.json()
         if "error" in data:
-            await message.answer(data["error"])
+            await message.answer(data["error"],reply_markup=vote_keyboard)
             return
 
         round_name = data["round_name"]
@@ -227,7 +242,7 @@ async def cmd_show_participants(message: Message):
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Ошибка /vote: {e}")
-        await message.answer("Не удалось загрузить участников.")
+        await message.answer("Не удалось загрузить участников.",reply_markup=vote_keyboard)
 
 
 @dp.callback_query(lambda c: c.data.startswith("vote_"))

@@ -1,4 +1,3 @@
-# bot.py (исправленный полный код)
 import asyncio
 import logging
 import requests
@@ -69,7 +68,7 @@ class AddParticipantStates(StatesGroup):
 class StartRoundStates(StatesGroup):
     choose_campaign = State()
     enter_round_number = State()
-    enter_winners_count = State()  # Для выбора количества победителей
+    enter_winners_count = State()
     enter_new_campaign_name = State()
 
 
@@ -79,9 +78,8 @@ class EndRoundStates(StatesGroup):
 
 
 class TransferWinnersStates(StatesGroup):
-    choose_action = State()          # та же / новая / существующий раунд
-    choose_existing_campaign = State()  # Выбор существующей кампании
-    choose_existing_round = State()     # Выбор существующего раунда
+    choose_action = State()  # та же / новая / существующий
+    choose_existing_round = State()  # Выбор существующего раунда в той же кампании
     enter_new_campaign_name = State()
 
 
@@ -115,11 +113,12 @@ async def get_active_rounds() -> List[Dict]:
 
 async def get_rounds_for_campaign(campaign_id: int) -> List[Dict]:
     rounds = await get_active_rounds()
-    print(rounds)
     return [rd for rd in rounds if rd.get("campaign_order_number") == campaign_id]
 
 
 async def transfer_winners_to_round(winners: List[Dict], target_round_id: int) -> str:
+    if not winners:
+        return "Нет победителей для переноса."
     success_count = 0
     errors = []
     for winner in winners:
@@ -140,7 +139,7 @@ async def transfer_winners_to_round(winners: List[Dict], target_round_id: int) -
 
 
 # ──────────────────────────────────────────────
-# ОБЩИЕ КОМАНДЫ
+# ОБЩИЕ КОМАНДЫ (без изменений)
 # ──────────────────────────────────────────────
 
 @dp.message(Command("start"))
@@ -151,7 +150,6 @@ async def cmd_start(message: Message):
         "• /vote /list /participants — посмотреть текущий раунд и проголосовать\n"
         "• /help — все доступные команды\n"
         "• /myid — узнать свой Telegram ID\n\n"
-        "Админам доступны специальные команды"
     )
 
 
@@ -161,7 +159,6 @@ async def cmd_help(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Как проголосовать", callback_data="help_vote")],
         [InlineKeyboardButton(text="Мой Telegram ID", callback_data="help_myid")],
-        [InlineKeyboardButton(text="Статус раунда", callback_data="help_status")],
     ])
     if is_admin(user_id):
         kb.inline_keyboard.extend([
@@ -169,20 +166,19 @@ async def cmd_help(message: Message):
             [InlineKeyboardButton(text="Завершение раунда", callback_data="help_end_round")],
             [InlineKeyboardButton(text="Добавление участников", callback_data="help_add_participant")],
         ])
-    await message.answer("📖 Помощь — выберите тему:", reply_markup=kb)
+    await message.answer("📖 Помощь — выберите пункт:", reply_markup=kb)
 
 
 @dp.callback_query(lambda c: c.data.startswith("help_"))
 async def process_help_callback(callback: CallbackQuery):
     topic = callback.data.split("_")[1]
-
+    print(topic)
     texts = {
         "vote": "Напишите /vote — бот покажет участников с номерами и ФИО. Нажмите на кнопку — проголосуете.",
-        "myid": "/myid покажет ваш Telegram ID.",
-        "status": "/status покажет текущий раунд и его статус.",
         "start": "Админ-команда /start_round — выбираете кампанию из списка, номер раунда (или авто).",
         "end": "Админ-команда /end_round — выбираете раунд, завершаете, решаете куда перенести победителей.",
         "add": "Админ-команда /add_participant — выбираете кампанию → раунд → добавляете участников по одному.",
+        "myid": "Напишите /myid — бот покажет ваш телеграмм ID"
     }
     text = texts.get(topic, "Подробностей пока нет.")
     await callback.message.answer(text)
@@ -191,21 +187,7 @@ async def process_help_callback(callback: CallbackQuery):
 
 @dp.message(Command("myid"))
 async def cmd_myid(message: Message):
-    await message.answer(f"Твой Telegram ID: **{message.from_user.id}**")
-
-
-@dp.message(Command("status"))
-async def cmd_status(message: Message):
-    try:
-        r = requests.get(API_ACTIVE_ROUND_INFO, headers=PUBLIC_HEADERS, timeout=8)
-        r.raise_for_status()
-        data = r.json()
-        if "error" in data:
-            await message.answer(data["error"])
-        else:
-            await message.answer(f"Раунд: {data.get('round_name', 'нет активного')}\nСтатус: {data.get('status', 'неизвестно')}")
-    except Exception as e:
-        await message.answer(f"Ошибка: {str(e)}")
+    await message.answer(f"Ваш Telegram ID: **{message.from_user.id}**")
 
 
 # ──────────────────────────────────────────────
@@ -276,17 +258,15 @@ async def process_vote_callback(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "refresh_participants")
 async def refresh_participants(callback: CallbackQuery):
-    # Создаём фейковое сообщение с обязательным полем date
     fake_message = types.Message(
         message_id=callback.message.message_id,
         from_user=callback.from_user,
         chat=callback.message.chat,
-        date=int(time.time()),  # Текущее время в Unix timestamp (обязательное поле!)
-        text="/vote"  # Симулируем команду
+        date=int(time.time()),
+        text="/vote"
     )
-
     await cmd_show_participants(fake_message)
-    await callback.message.delete()  # Удаляем старое сообщение после вызова
+    await callback.message.delete()
     await callback.answer("Обновлено!")
 
 
@@ -405,7 +385,7 @@ async def process_add_participant_name(message: Message, state: FSMContext):
 
 
 # ──────────────────────────────────────────────
-# АДМИН: ЗАПУСК РАУНДА
+# АДМИН: ЗАПУСК РАУНДА (без изменений, winners_count уже работает)
 # ──────────────────────────────────────────────
 
 @dp.message(Command("start_round"))
@@ -558,7 +538,7 @@ async def process_er_campaign(callback: CallbackQuery, state: FSMContext):
     rounds = await get_rounds_for_campaign(camp_id)
     active = [r for r in rounds if r["status"] == "active"]
     if not active:
-        await callback.message.edit_text("Нет активных раундов.")
+        await callback.message.edit_text("Нет активных раундов в этой кампании.")
         await state.clear()
         return
 
@@ -568,7 +548,7 @@ async def process_er_campaign(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"er_round_{rd['id']}")
         ])
 
-    await callback.message.edit_text("Выберите раунд:", reply_markup=kb)
+    await callback.message.edit_text("Выберите раунд для завершения:", reply_markup=kb)
     await state.set_state(EndRoundStates.choose_round)
     await callback.answer()
 
@@ -589,140 +569,82 @@ async def process_er_round(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"Раунд завершён.")
 
         winners = data.get("winners", [])
-        if winners:
-            text = "Победители:\n" + "\n".join([f"{w['full_name']} ({w['votes']})" for w in winners])
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="В ту же кампанию", callback_data="trans_same")],
-                [InlineKeyboardButton(text="В новую кампанию", callback_data="trans_new")],
-                [InlineKeyboardButton(text="В существующий раунд", callback_data="trans_existing")],
-                [InlineKeyboardButton(text="Не переносить", callback_data="trans_skip")],
-            ])
-            await callback.message.answer(text, reply_markup=kb)
-            await state.update_data(winners=winners, current_round_id=round_id,
-                                    campaign_id=data.get("ended_round_campaign_id"))
-            await state.set_state(TransferWinnersStates.choose_action)
-        else:
-            await callback.message.answer("Нет победителей.")
+        if not winners:
+            await callback.message.answer("Нет победителей для переноса.")
             await state.clear()
+            return
+
+        text = "Победители:\n" + "\n".join([f"{w['full_name']} ({w['votes']})" for w in winners])
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+
+        # Проверяем активные раунды в той же кампании
+        campaign_id = data.get("ended_round_campaign_id")
+        await state.update_data(campaign_id=campaign_id, winners=winners)
+
+        active_rounds = await get_rounds_for_campaign(campaign_id)
+        active = [r for r in active_rounds if r["status"] == "active" and r["id"] != round_id]
+
+        if active:
+            # Есть активные раунды → предлагаем их
+            kb.inline_keyboard.append([InlineKeyboardButton(text="В существующий раунд", callback_data="trans_existing")])
+        else:
+            # Нет активных → сразу создаём новый и переносим
+            round_payload = {"campaign_id": campaign_id}
+            try:
+                rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
+                rr.raise_for_status()
+                new_round = rr.json()
+                target_round_id = new_round["round_id"]
+                result = await transfer_winners_to_round(winners, target_round_id)
+                await callback.message.answer(f"Создан новый раунд (автоматически). {result}")
+                await state.clear()
+                await callback.answer()
+                return
+            except Exception as e:
+                await callback.message.answer(f"Ошибка создания нового раунда: {e}")
+                await state.clear()
+                await callback.answer()
+                return
+
+        # Общие кнопки
+        kb.inline_keyboard.extend([
+            [InlineKeyboardButton(text="В ту же кампанию (новый раунд)", callback_data="trans_same")],
+            [InlineKeyboardButton(text="В новую кампанию", callback_data="trans_new")],
+            [InlineKeyboardButton(text="Не переносить", callback_data="trans_skip")],
+        ])
+
+        await callback.message.answer(text, reply_markup=kb)
+        await state.set_state(TransferWinnersStates.choose_action)
     except Exception as e:
-        await callback.message.edit_text(f"Ошибка: {e}")
+        await callback.message.edit_text(f"Ошибка завершения раунда: {e}")
         await state.clear()
 
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data.startswith("trans_"))
-async def process_transfer(callback: CallbackQuery, state: FSMContext):
-    if callback.data == "trans_skip":
-        await callback.message.edit_text("Перенос отменён.")
-        await state.clear()
-        await callback.answer()
-        return
-
+@dp.callback_query(lambda c: c.data == "trans_existing")
+async def process_transfer_existing(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    campaign_id = data.get("campaign_id")
     winners = data.get("winners", [])
 
-    if callback.data == "trans_same":
-        campaign_id = data.get("campaign_id")
-        if not campaign_id:
-            await callback.message.answer("Не удалось определить кампанию.")
-            await state.clear()
-            await callback.answer()
-            return
+    rounds = await get_rounds_for_campaign(campaign_id)
+    active = [r for r in rounds if r["status"] == "active"]
 
-        rounds = await get_rounds_for_campaign(campaign_id)
-        if not rounds:
-            # Автоматически создаём раунд, если нет активных
-            round_payload = {"campaign_id": campaign_id}
-            try:
-                rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
-                rr.raise_for_status()
-                round_data = rr.json()
-                target_round_id = round_data["round_id"]
-                await callback.message.answer("Создан новый раунд, поскольку активных не найдено.")
-            except Exception as e:
-                await callback.message.edit_text(f"Ошибка создания раунда: {e}")
-                await state.clear()
-                await callback.answer()
-                return
-        else:
-            # Если есть активные, выбираем первый (по умолчанию)
-            target_round_id = rounds[0]["id"]
-            await callback.message.answer("Переносим в первый активный раунд в той же кампании.")
-
-        result = await transfer_winners_to_round(winners, target_round_id)
-        await callback.message.edit_text(f"Победители перенесены в раунд в той же кампании. {result}")
-        await state.clear()
-        await callback.answer()
-        return
-
-    if callback.data == "trans_new":
-        await callback.message.edit_text("Введите название новой кампании:")
-        await state.set_state(TransferWinnersStates.enter_new_campaign_name)
-        await callback.answer()
-        return
-
-    if callback.data == "trans_existing":
-        campaigns = await get_active_campaigns()
-        kb = InlineKeyboardMarkup(inline_keyboard=[])
-        for c in campaigns:
-            kb.inline_keyboard.append([
-                InlineKeyboardButton(text=f"#{c['order_number']} {c['name']}", callback_data=f"trans_exist_camp_{c['id']}")
-            ])
-        kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="trans_skip")])
-
-        await callback.message.answer("Выберите существующую кампанию для переноса:", reply_markup=kb)
-        await state.set_state(TransferWinnersStates.choose_existing_campaign)
-        await callback.answer()
-        return
-
-
-@dp.callback_query(lambda c: c.data.startswith("trans_exist_camp_"))
-async def process_transfer_existing_campaign(callback: CallbackQuery, state: FSMContext):
-    if callback.data == "trans_skip":
-        await callback.message.edit_text("Отменено.")
-        await state.clear()
-        await callback.answer()
-        return
-
-    try:
-        camp_id = int(callback.data.split("_")[-1])
-    except:
-        await callback.answer("Ошибка", show_alert=True)
-        return
-
-    rounds = await get_rounds_for_campaign(camp_id)
-    if not rounds:
-        # Автоматически создаём раунд, если нет активных
-        round_payload = {"campaign_id": camp_id}
-        try:
-            rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
-            rr.raise_for_status()
-            round_data = rr.json()
-            target_round_id = round_data["round_id"]
-            await callback.message.answer("Создан новый раунд, поскольку активных не найдено.")
-        except Exception as e:
-            await callback.message.edit_text(f"Ошибка создания раунда: {e}")
-            await state.clear()
-            await callback.answer()
-            return
-        data = await state.get_data()
-        winners = data.get("winners", [])
-        result = await transfer_winners_to_round(winners, target_round_id)
-        await callback.message.edit_text(f"Победители перенесены. {result}")
+    if not active:
+        await callback.message.edit_text("Нет активных раундов для переноса.")
         await state.clear()
         await callback.answer()
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[])
-    for rd in rounds:
+    for rd in active:
         kb.inline_keyboard.append([
             InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"trans_exist_round_{rd['id']}")
         ])
     kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="trans_skip")])
 
-    await callback.message.edit_text("Выберите существующий раунд:", reply_markup=kb)
-    await state.update_data(existing_campaign_id=camp_id)
+    await callback.message.edit_text("Выберите активный раунд для переноса:", reply_markup=kb)
     await state.set_state(TransferWinnersStates.choose_existing_round)
     await callback.answer()
 
@@ -739,8 +661,36 @@ async def process_transfer_existing_round(callback: CallbackQuery, state: FSMCon
     winners = data.get("winners", [])
 
     result = await transfer_winners_to_round(winners, target_round_id)
-    await callback.message.edit_text(f"Победители перенесены в существующий раунд. {result}")
+    await callback.message.edit_text(f"Победители перенесены в выбранный раунд. {result}")
     await state.clear()
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "trans_same")
+async def process_transfer_same(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    winners = data.get("winners", [])
+    campaign_id = data.get("campaign_id")
+
+    round_payload = {"campaign_id": campaign_id}
+    try:
+        rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
+        rr.raise_for_status()
+        new_round = rr.json()
+        target_round_id = new_round["round_id"]
+        result = await transfer_winners_to_round(winners, target_round_id)
+        await callback.message.edit_text(f"Создан новый раунд в той же кампании. {result}")
+    except Exception as e:
+        await callback.message.edit_text(f"Ошибка создания раунда: {e}")
+
+    await state.clear()
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "trans_new")
+async def process_transfer_new(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Введите название новой кампании:")
+    await state.set_state(TransferWinnersStates.enter_new_campaign_name)
     await callback.answer()
 
 

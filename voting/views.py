@@ -35,9 +35,26 @@ class CurrentRoundResults(APIView):
 
         print(results)
 
+        # Делим на две части: топ n/2 слева, остальное справа
+        mid = (len(results) + 1) // 2
+        left_column = results[:mid]
+        right_column = results[mid:]
+
+        # Добавляем правильную позицию в каждый элемент
+        left_column_with_pos = [
+            {**item, "position": i + 1}
+            for i, item in enumerate(left_column)
+        ]
+
+        right_column_with_pos = [
+            {**item, "position": mid + 1 + i}
+            for i, item in enumerate(right_column)
+        ]
+
         context = {
             "round": round_obj,
-            "results": results,
+            "left_column": left_column_with_pos,
+            "right_column": right_column_with_pos,
             "total_votes": Vote.objects.filter(round=round_obj).count(),
         }
         return render(request, "voting/results.html", context)
@@ -191,7 +208,7 @@ class StartRoundAPIView(APIView):
                 "status": "ok",
                 "round_id": round_obj.id,
                 "round_number": round_obj.number,
-                "message": f"Раунд #{round_obj.number} запущен в кампании #{campaign.order_number} {campaign.name}"
+                "message": f"Раунд №{round_obj.number} запущен в кампании {campaign.name}"
             })
         except Campaign.DoesNotExist:
             return Response({"error": "Кампания не найдена"}, status=404)

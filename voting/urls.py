@@ -8,7 +8,7 @@ from .views import (
     StartRoundAPIView,
     EndRoundAPIView,
     AddParticipantAPIView,
-    CreateCampaignAPIView, ActiveCampaignsList
+    CreateCampaignAPIView, ActiveCampaignsList, SetCurrentRoundAPIView, GetCurrentRoundAPIView
 )
 
 urlpatterns = [
@@ -29,4 +29,6 @@ urlpatterns = [
     path('add-participant/', AddParticipantAPIView.as_view(), name='add-participant'),
     path('create-campaign/', CreateCampaignAPIView.as_view(), name='create-campaign'),
     path('active-campaigns/', ActiveCampaignsList.as_view(), name='active-campaigns'),
+    path('set-current-round/', SetCurrentRoundAPIView.as_view(), name='set-current-round'),
+    path('get-current-round/', GetCurrentRoundAPIView.as_view(), name='get-current-round'),
 ]

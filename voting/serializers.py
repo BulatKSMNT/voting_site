@@ -38,4 +38,4 @@ class RoundSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Round
-        fields = ["id", "number", "campaign_name", "campaign_order_number", "status", "started_at", "ended_at"]
+        fields = ["id", "number", "campaign_name", "campaign_order_number", "status", "started_at", "ended_at", "is_current", "winners_count"]

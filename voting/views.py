@@ -16,47 +16,53 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 class CurrentRoundResults(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        round_obj = Round.objects.filter(status="active").order_by("-started_at").first()
-        if not round_obj:
-            return render(request, "voting/results.html", {"round": None})
+        active_rounds = Round.objects.filter(status="active").order_by("started_at")
 
-        participants_with_votes = Participant.objects.filter(round=round_obj).annotate(
-            votes=Count("vote")
-        ).order_by("-votes", "order_number", "full_name")
+        current_round = active_rounds.first() if active_rounds.exists() else None
 
-        results = [
-            {
-                "participant_order": p.order_number,
-                "participant_full_name": p.full_name,
-                "votes": p.votes,
-            }
-            for p in participants_with_votes
-        ]
-
-        print(results)
-
-        # Делим на две части: топ n/2 слева, остальное справа
-        mid = (len(results) + 1) // 2
-        left_column = results[:mid]
-        right_column = results[mid:]
-
-        # Добавляем правильную позицию в каждый элемент
-        left_column_with_pos = [
-            {**item, "position": i + 1}
-            for i, item in enumerate(left_column)
-        ]
-
-        right_column_with_pos = [
-            {**item, "position": mid + 1 + i}
-            for i, item in enumerate(right_column)
-        ]
+        round_id_str = request.GET.get("round_id")
+        if round_id_str:
+            try:
+                selected_id = int(round_id_str)
+                current_round = active_rounds.filter(id=selected_id).first()
+                if not current_round:
+                    current_round = active_rounds.first()  # fallback
+            except ValueError:
+                pass  # если некорректный id → берём самый свежий
 
         context = {
-            "round": round_obj,
-            "left_column": left_column_with_pos,
-            "right_column": right_column_with_pos,
-            "total_votes": Vote.objects.filter(round=round_obj).count(),
+            "round": current_round,
+            "active_rounds": active_rounds,
+            "selected_round_id": current_round.id if current_round else None,
+            "total_votes": 0,
+            "left_column": [],
+            "right_column": [],
         }
+
+        if current_round:
+            participants_with_votes = Participant.objects.filter(round=current_round) \
+                .annotate(votes=Count("vote")) \
+                .order_by("-votes", "order_number", "full_name")
+
+            results = [
+                {
+                    "participant_order": p.order_number,
+                    "participant_full_name": p.full_name,
+                    "votes": p.votes,
+                }
+                for p in participants_with_votes
+            ]
+
+            mid = (len(results) + 1) // 2
+            left = results[:mid]
+            right = results[mid:]
+
+            context.update({
+                "left_column": [{**item, "position": i + 1} for i, item in enumerate(left)],
+                "right_column": [{**item, "position": mid + 1 + i} for i, item in enumerate(right)],
+                "total_votes": Vote.objects.filter(round=current_round).count(),
+            })
+
         return render(request, "voting/results.html", context)
 
 
@@ -75,7 +81,11 @@ class ActiveRoundParticipants(APIView):
     def get(self, request):
         round_obj = Round.objects.filter(status="active").order_by("-started_at").first()
         if not round_obj:
-            return Response({"error": "Активного раунда нет"}, status=404)
+            return Response({
+                "error_code": "no_active_round",
+                "message": "Сейчас нет активного раунда. Голосование начнётся позже 🔥",
+                "detail": "Следите за анонсами"
+            }, status=200)
 
         participants = Participant.objects.filter(round=round_obj).order_by("order_number", "full_name")
         serializer = ParticipantSerializer(participants, many=True)
@@ -89,8 +99,15 @@ class ActiveRoundParticipants(APIView):
 
 class ActiveRoundInfo(APIView):
     permission_classes = [AllowAny]
+
     def get(self, request):
-        round_obj = Round.objects.filter(status="active").order_by("-started_at").first()
+        # Сначала ищем текущий раунд (is_current=True)
+        round_obj = Round.objects.filter(is_current=True, status="active").first()
+
+        # Если нет текущего — берём последний активный
+        if not round_obj:
+            round_obj = Round.objects.filter(status="active").order_by("-started_at").first()
+
         if not round_obj:
             return Response({"error": "Активного раунда нет"}, status=404)
 
@@ -234,9 +251,36 @@ class EndRoundAPIView(APIView):
             round_obj.ended_at = timezone.now()
             round_obj.save(update_fields=["status", "ended_at"])
 
-            winners = Participant.objects.filter(round=round_obj).annotate(
+            # Считаем голоса по участникам
+            participants_with_votes = Participant.objects.filter(round=round_obj).annotate(
                 votes_count=Count("vote")
-            ).order_by("-votes_count", "order_number", "full_name")[:round_obj.winners_count]
+            ).order_by("-votes_count")
+
+            if not participants_with_votes:
+                return Response({
+                    "status": "ok",
+                    "message": f"Раунд #{round_obj.number} завершён",
+                    "winners_count": round_obj.winners_count,
+                    "winners": []
+                })
+
+            # Получаем уникальные значения голосов, отсортированные по убыванию
+            unique_votes = participants_with_votes.values_list("votes_count", flat=True).distinct()
+
+            # Берём топ-n уникальных баллов (или все, если меньше n)
+            top_n_scores = list(unique_votes)[:round_obj.winners_count]
+
+            if not top_n_scores:
+                min_votes = 0
+            elif len(top_n_scores) < round_obj.winners_count:
+                # Если уникальных баллов меньше n — берём минимальный из имеющихся
+                min_votes = min(top_n_scores)
+            else:
+                # Нормальный случай: берём n-й по величине
+                min_votes = top_n_scores[-1]
+
+            # Все участники с баллами >= min_votes
+            winners = participants_with_votes.filter(votes_count__gte=min_votes)
 
             winners_data = [
                 {
@@ -257,7 +301,6 @@ class EndRoundAPIView(APIView):
             })
         except Round.DoesNotExist:
             return Response({"error": "Раунд не найден"}, status=404)
-
 
 class AddParticipantAPIView(APIView):
     authentication_classes = [TokenAuthentication]
@@ -289,3 +332,38 @@ class AddParticipantAPIView(APIView):
             })
         except Round.DoesNotExist:
             return Response({"error": "Раунд не найден"}, status=404)
+
+
+# Новый эндпоинт: установить текущий раунд
+class SetCurrentRoundAPIView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        round_id = request.data.get("round_id")
+        if not round_id:
+            return Response({"error": "round_id обязателен"}, status=400)
+
+        try:
+            # Снимаем флаг со всех
+            Round.objects.filter(is_current=True).update(is_current=False)
+            # Ставим на выбранный
+            round_obj = Round.objects.get(id=round_id, status="active")
+            round_obj.is_current = True
+            round_obj.save()
+            return Response({"status": "ok", "message": f"Раунд {round_obj} теперь текущий"})
+        except Round.DoesNotExist:
+            return Response({"error": "Раунд не найден или не активен"}, status=404)
+
+
+# Новый эндпоинт: получить ID текущего раунда (если нужно)
+class GetCurrentRoundAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        round_obj = Round.objects.filter(is_current=True, status="active").first()
+        if not round_obj:
+            round_obj = Round.objects.filter(status="active").order_by("-started_at").first()
+        if not round_obj:
+            return Response({"current_round_id": None})
+        return Response({"current_round_id": round_obj.id})

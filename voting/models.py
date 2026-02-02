@@ -37,7 +37,8 @@ class Round(models.Model):
         choices=[("pending", "Ожидание"), ("active", "Активен"), ("ended", "Завершён")],
         default="pending"
     )
-    winners_count = models.PositiveSmallIntegerField(default=3, verbose_name="Сколько победителей выбрать")
+    winners_count = models.PositiveSmallIntegerField(default=3, verbose_name="Сколько призовых мест")
+    is_current = models.BooleanField(default=False, verbose_name="Текущий раунд для голосования")
 
     class Meta:
         verbose_name = "Раунд"
@@ -48,6 +49,11 @@ class Round(models.Model):
     def __str__(self):
         return f"{self.campaign} — раунд {self.number}"
 
+    def save(self, *args, **kwargs):
+        # При создании нового текущего раунда снимаем флаг с предыдущего
+        if self.is_current:
+            Round.objects.filter(is_current=True).exclude(pk=self.pk).update(is_current=False)
+        super().save(*args, **kwargs)
 
 class Participant(models.Model):
     """Участник раунда"""

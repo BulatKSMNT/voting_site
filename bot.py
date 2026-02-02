@@ -3,29 +3,24 @@ import logging
 import requests
 import time
 from typing import List, Dict
-
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, InlineKeyboardMarkup, InlineKeyboardButton,
-    CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+    Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-
 # Поддержка .env
 from decouple import config
+
 
 # ──────────────────────────────────────────────
 # НАСТРОЙКИ (из .env)
 # ──────────────────────────────────────────────
-
 BOT_TOKEN = config("TELEGRAM_TOKEN")
 DJANGO_API_TOKEN = config("DJANGO_API_TOKEN")  # Токен из Django authtoken
-
 DJANGO_API_BASE = "http://127.0.0.1:8000"
-
 API_VOTE_URL = f"{DJANGO_API_BASE}/api/vote/"
 API_ACTIVE_PARTICIPANTS = f"{DJANGO_API_BASE}/api/active-participants/"
 API_ACTIVE_ROUND_INFO = f"{DJANGO_API_BASE}/api/active-round-info/"
@@ -35,35 +30,31 @@ API_END_ROUND = f"{DJANGO_API_BASE}/api/end-round/"
 API_ADD_PARTICIPANT = f"{DJANGO_API_BASE}/api/add-participant/"
 API_CREATE_CAMPAIGN = f"{DJANGO_API_BASE}/api/create-campaign/"
 API_ACTIVE_CAMPAIGNS = f"{DJANGO_API_BASE}/api/active-campaigns/"
+API_SET_CURRENT_ROUND = f"{DJANGO_API_BASE}/api/set-current-round/"
+API_GET_CURRENT_ROUND = f"{DJANGO_API_BASE}/api/get-current-round/"
+
 
 ADMIN_IDS = [1251634923, 1401411234]
-
 # Заголовки
 PUBLIC_HEADERS = {
     "Content-Type": "application/json"
 }
-
 ADMIN_HEADERS = {
     "Authorization": f"Token {DJANGO_API_TOKEN}",
     "Content-Type": "application/json"
 }
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-
 
 # ──────────────────────────────────────────────
 # СОСТОЯНИЯ FSM
 # ──────────────────────────────────────────────
-
 class AddParticipantStates(StatesGroup):
     choose_campaign = State()
     choose_round = State()
     waiting_for_name = State()
-
 
 class StartRoundStates(StatesGroup):
     choose_campaign = State()
@@ -71,25 +62,20 @@ class StartRoundStates(StatesGroup):
     enter_winners_count = State()
     enter_new_campaign_name = State()
 
-
 class EndRoundStates(StatesGroup):
     choose_campaign = State()
     choose_round = State()
-
 
 class TransferWinnersStates(StatesGroup):
     choose_action = State()  # та же / новая / существующий
     choose_existing_round = State()  # Выбор существующего раунда в той же кампании
     enter_new_campaign_name = State()
 
-
 # ──────────────────────────────────────────────
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ──────────────────────────────────────────────
-
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
-
 
 async def get_active_campaigns() -> List[Dict]:
     try:
@@ -100,7 +86,6 @@ async def get_active_campaigns() -> List[Dict]:
         logger.error(f"Ошибка получения кампаний: {e}")
         return []
 
-
 async def get_active_rounds() -> List[Dict]:
     try:
         r = requests.get(API_ACTIVE_ROUNDS, headers=PUBLIC_HEADERS, timeout=8)
@@ -110,11 +95,11 @@ async def get_active_rounds() -> List[Dict]:
         logger.error(f"Ошибка получения раундов: {e}")
         return []
 
-
 async def get_rounds_for_campaign(campaign_id: int) -> List[Dict]:
     rounds = await get_active_rounds()
+    print(rounds)
+    print(campaign_id)
     return [rd for rd in rounds if rd.get("campaign_order_number") == campaign_id]
-
 
 async def transfer_winners_to_round(winners: List[Dict], target_round_id: int) -> str:
     if not winners:
@@ -137,11 +122,9 @@ async def transfer_winners_to_round(winners: List[Dict], target_round_id: int) -
         return f"Добавлено {success_count}/{len(winners)}. Ошибки: {', '.join(errors)}"
     return f"Все {success_count} победителей добавлены успешно!"
 
-
 # ──────────────────────────────────────────────
 # ОБЩИЕ КОМАНДЫ
 # ──────────────────────────────────────────────
-
 vote_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Проголосовать")],
@@ -150,13 +133,12 @@ vote_keyboard = ReplyKeyboardMarkup(
     one_time_keyboard=False
 )
 
-
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! 👋 Это бот для голосования.\n\n"
-       
-        "• /vote /list /participants — Можно посмотреть текущий раунд и проголосовать\n",
+        "Привет! 🔥\n\n"
+        "Битва ведущих начинается, и твой голос решает всё.\n"
+        "Нажимай кнопку внизу и голосуй ⬇️\n",
         #"• /help — все доступные команды\n"
         #"• /myid — узнать свой Telegram ID\n\n",
         reply_markup = vote_keyboard
@@ -179,10 +161,10 @@ async def cmd_help(message: Message):
             [InlineKeyboardButton(text="Запуск раунда", callback_data="help_start_round")],
             [InlineKeyboardButton(text="Завершение раунда", callback_data="help_end_round")],
             [InlineKeyboardButton(text="Добавление участников", callback_data="help_add_participant")],
+            [InlineKeyboardButton(text="Изменение текущего раунда", callback_data="help_set_current_round")],
         ])
     await message.answer("📖 Помощь — выберите пункт:", reply_markup=kb)
     await message.answer("Используй клавиатуру внизу для быстрого доступа", reply_markup=vote_keyboard)
-
 
 @dp.callback_query(lambda c: c.data.startswith("help_"))
 async def process_help_callback(callback: CallbackQuery):
@@ -193,57 +175,55 @@ async def process_help_callback(callback: CallbackQuery):
         "start": "Админ-команда /start_round — выбираете кампанию из списка, номер раунда (или авто).",
         "end": "Админ-команда /end_round — выбираете раунд, завершаете, решаете куда перенести победителей.",
         "add": "Админ-команда /add_participant — выбираете кампанию → раунд → добавляете участников по одному.",
+        "set": "Админ-команда /set_current_round — выбираете кампанию → раунд → добавляете участников по одному.",
         "myid": "Напишите /myid — бот покажет ваш телеграмм ID"
     }
     text = texts.get(topic, "Подробностей пока нет.")
     await callback.message.answer(text)
     await callback.answer()
 
-
 @dp.message(Command("myid"))
 async def cmd_myid(message: Message):
     await message.answer(f"Ваш Telegram ID: **{message.from_user.id}**", reply_markup=vote_keyboard)
 
-
 # ──────────────────────────────────────────────
 # ГОЛОСОВАНИЕ
 # ──────────────────────────────────────────────
-
 @dp.message(Command("vote", "list", "participants"))
 async def cmd_show_participants(message: Message):
     user_id = message.from_user.id
     url = f"{API_ACTIVE_ROUND_INFO}?user_id={user_id}"
     try:
         r = requests.get(url, headers=PUBLIC_HEADERS, timeout=8)
-        r.raise_for_status()
         data = r.json()
-        if "error" in data:
-            await message.answer(data["error"],reply_markup=vote_keyboard)
+        if r.status_code != 200 or not data.get("round_id"):
+            msg = data.get("message") or "Активного раунда сейчас нет."
+            await message.answer(
+                f"{msg}\n\nПриходи, как только запустят новый раунд!",
+                reply_markup=vote_keyboard
+            )
             return
-
         round_name = data["round_name"]
         participants = data["participants"]
         user_vote = data.get("user_vote")
-
         text = f"<b>{round_name}</b>\n\n"
         if user_vote:
             text += f"Вы уже проголосовали за {user_vote['participant_name']}\n"
         else:
             text += "Выберите участника:\n"
-
         kb = InlineKeyboardMarkup(inline_keyboard=[])
         for p in participants:
             btn_text = f"#{p['order_number']} {p.get('full_name', '?')} ({p['votes']} голосов)"
             if user_vote and user_vote["participant_id"] == p["id"]:
                 btn_text += " ✓"
             kb.inline_keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"vote_{data['round_id']}_{p['id']}")])
-
-
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"Ошибка /vote: {e}")
-        await message.answer("Не удалось загрузить участников.",reply_markup=vote_keyboard)
-
+        logger.error(f"Ошибка загрузки раунда: {e}")
+        await message.answer(
+            "Не удалось проверить, идёт ли сейчас раунд 😕\nПопробуй позже.",
+            reply_markup=vote_keyboard
+        )
 
 @dp.callback_query(lambda c: c.data.startswith("vote_"))
 async def process_vote_callback(callback: CallbackQuery):
@@ -254,14 +234,12 @@ async def process_vote_callback(callback: CallbackQuery):
     except:
         await callback.answer("Ошибка кнопки", show_alert=True)
         return
-
     user_id = callback.from_user.id
     payload = {
         "round": round_id,
         "participant": participant_id,
         "user_telegram_id": user_id
     }
-
     try:
         r = requests.post(API_VOTE_URL, json=payload, headers=PUBLIC_HEADERS, timeout=8)
         r.raise_for_status()
@@ -269,7 +247,6 @@ async def process_vote_callback(callback: CallbackQuery):
         await callback.answer("Голос принят!")
     except Exception as e:
         await callback.answer("Не удалось проголосовать", show_alert=True)
-
 
 @dp.callback_query(lambda c: c.data == "refresh_participants")
 async def refresh_participants(callback: CallbackQuery):
@@ -284,22 +261,18 @@ async def refresh_participants(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer("Обновлено!")
 
-
 # ──────────────────────────────────────────────
 # АДМИН: ДОБАВЛЕНИЕ УЧАСТНИКОВ
 # ──────────────────────────────────────────────
-
 @dp.message(Command("add_participant"))
 async def cmd_add_participant_start(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         await message.answer("Только для админов")
         return
-
     campaigns = await get_active_campaigns()
     if not campaigns:
         await message.answer("Нет активных кампаний.")
         return
-
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     print(campaigns)
     for c in campaigns:
@@ -307,10 +280,8 @@ async def cmd_add_participant_start(message: Message, state: FSMContext):
             InlineKeyboardButton(text=f"#{c['order_number']} {c['name']}", callback_data=f"addp_camp_{c['id']}")
         ])
     kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
-
     await message.answer("Выберите кампанию:", reply_markup=kb)
     await state.set_state(AddParticipantStates.choose_campaign)
-
 
 @dp.callback_query(lambda c: c.data.startswith("addp_camp_") or c.data == "cancel")
 async def process_addp_campaign(callback: CallbackQuery, state: FSMContext):
@@ -319,31 +290,26 @@ async def process_addp_campaign(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-
     try:
         camp_id = int(callback.data.split("_")[-1])
     except:
         await callback.answer("Ошибка", show_alert=True)
         return
-
     rounds = await get_rounds_for_campaign(camp_id)
     if not rounds:
         await callback.message.edit_text("Нет раундов в кампании.")
         await state.clear()
         return
-
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     for rd in rounds:
         kb.inline_keyboard.append([
             InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"addp_round_{rd['id']}")
         ])
     kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
-
     await callback.message.edit_text("Выберите раунд:", reply_markup=kb)
     await state.update_data(campaign_id=camp_id)
     await state.set_state(AddParticipantStates.choose_round)
     await callback.answer()
-
 
 @dp.callback_query(lambda c: c.data.startswith("addp_round_"))
 async def process_addp_round(callback: CallbackQuery, state: FSMContext):
@@ -352,7 +318,6 @@ async def process_addp_round(callback: CallbackQuery, state: FSMContext):
     except:
         await callback.answer("Ошибка", show_alert=True)
         return
-
     await state.update_data(round_id=round_id)
     await callback.message.edit_text(
         "Отправляйте участников по одному:\nФИО [описание в скобках]\n\n"
@@ -362,7 +327,6 @@ async def process_addp_round(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AddParticipantStates.waiting_for_name)
     await callback.answer()
 
-
 @dp.message(AddParticipantStates.waiting_for_name)
 async def process_add_participant_name(message: Message, state: FSMContext):
     txt = message.text.strip().lower()
@@ -370,27 +334,22 @@ async def process_add_participant_name(message: Message, state: FSMContext):
         await message.answer("Добавление завершено.")
         await state.clear()
         return
-
     full_name = txt.title()
     description = ""
     if "(" in txt and ")" in txt:
         parts = txt.split("(", 1)
         full_name = parts[0].strip().title()
         description = parts[1].rstrip(")").strip()
-
     if not full_name:
         await message.answer("ФИО пустое. Попробуйте снова.")
         return
-
     data = await state.get_data()
     round_id = data.get("round_id")
-
     payload = {
         "round_id": round_id,
         "full_name": full_name,
         "description": description
     }
-
     try:
         r = requests.post(API_ADD_PARTICIPANT, json=payload, headers=ADMIN_HEADERS, timeout=10)
         r.raise_for_status()
@@ -398,32 +357,25 @@ async def process_add_participant_name(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"Ошибка: {str(e)}")
 
-
 # ──────────────────────────────────────────────
 # АДМИН: ЗАПУСК РАУНДА (без изменений, winners_count уже работает)
 # ──────────────────────────────────────────────
-
 @dp.message(Command("start_round"))
 async def cmd_start_round(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         await message.answer("Только для админов")
         return
-
     campaigns = await get_active_campaigns()
     kb = InlineKeyboardMarkup(inline_keyboard=[])
-
     for c in campaigns:
         kb.inline_keyboard.append([
             InlineKeyboardButton(text=f"#{c['order_number']} {c['name']}", callback_data=f"sr_camp_{c['id']}")
         ])
-
     kb.inline_keyboard.append([
         InlineKeyboardButton(text="Новая кампания", callback_data="sr_new_camp")
     ])
-
     await message.answer("Выберите кампанию:", reply_markup=kb)
     await state.set_state(StartRoundStates.choose_campaign)
-
 
 @dp.callback_query(lambda c: c.data.startswith("sr_camp_") or c.data == "sr_new_camp")
 async def process_sr_campaign(callback: CallbackQuery, state: FSMContext):
@@ -432,13 +384,11 @@ async def process_sr_campaign(callback: CallbackQuery, state: FSMContext):
         await state.set_state(StartRoundStates.enter_new_campaign_name)
         await callback.answer()
         return
-
     try:
         camp_id = int(callback.data.split("_")[-1])
     except:
         await callback.answer("Ошибка", show_alert=True)
         return
-
     await state.update_data(campaign_id=camp_id)
     await callback.message.edit_text(
         "Запустить раунд с автоматическим номером?\n"
@@ -451,14 +401,12 @@ async def process_sr_campaign(callback: CallbackQuery, state: FSMContext):
     await state.set_state(StartRoundStates.enter_round_number)
     await callback.answer()
 
-
 @dp.callback_query(lambda c: c.data == "sr_auto")
 @dp.message(StartRoundStates.enter_round_number)
 async def process_sr_round_number(event: types.CallbackQuery | Message, state: FSMContext):
     data = await state.get_data()
     campaign_id = data.get("campaign_id")
     payload = {"campaign_id": campaign_id}
-
     if isinstance(event, Message):
         try:
             num = int(event.text.strip())
@@ -466,38 +414,54 @@ async def process_sr_round_number(event: types.CallbackQuery | Message, state: F
         except:
             await event.answer("Число не распознано → авто.")
             payload["number"] = None  # Авто
-
     await state.update_data(payload=payload)  # Сохраняем payload для следующего шага
     await (event.message if isinstance(event, CallbackQuery) else event).answer(
         "Сколько победителей выбрать? (по умолчанию 3)"
     )
     await state.set_state(StartRoundStates.enter_winners_count)
 
-
 @dp.message(StartRoundStates.enter_winners_count)
 async def process_sr_winners_count(message: Message, state: FSMContext):
     data = await state.get_data()
-    payload = data.get("payload", {})
+    campaign_id = data.get("campaign_id")
+    winners = data.get("winners", [])           # может быть пустым при обычном старте
+    is_auto_transfer = data.get("is_auto_transfer", False)
+    round_number = data.get("number")  # может быть None
+
     try:
         winners_count = int(message.text.strip())
+        if winners_count < 1:
+            winners_count = 3
     except ValueError:
-        winners_count = 3  # Default
-        await message.answer("Число не распознано → используем 3 по умолчанию.")
+        winners_count = 3
+        await message.answer("Не удалось распознать число → используем 3 по умолчанию.")
 
-    payload["winners_count"] = winners_count
+    payload = {
+        "campaign_id": campaign_id,
+        "winners_count": winners_count
+    }
+    if round_number is not None:
+        payload["number"] = round_number
 
     try:
         r = requests.post(API_START_ROUND, json=payload, headers=ADMIN_HEADERS, timeout=10)
         r.raise_for_status()
         resp = r.json()
-        await message.answer(
-            f"✅ {resp.get('message')} (победителей: {winners_count})"
-        )
+        round_id = resp.get("round_id")
+        msg = f"✅ Раунд создан (победителей: {winners_count})"
+
+        if is_auto_transfer and winners:
+            result = await transfer_winners_to_round(winners, round_id)
+            msg += f"\n{result}"
+        elif is_auto_transfer:
+            msg += "\n(победители не найдены — перенос пропущен)"
+
+        await message.answer(msg)
+
     except Exception as e:
-        await message.answer(f"Ошибка: {e}")
+        await message.answer(f"Ошибка создания раунда: {str(e)}")
 
     await state.clear()
-
 
 @dp.message(StartRoundStates.enter_new_campaign_name)
 async def process_sr_new_campaign(message: Message, state: FSMContext):
@@ -505,7 +469,6 @@ async def process_sr_new_campaign(message: Message, state: FSMContext):
     if not name:
         await message.answer("Название пустое.")
         return
-
     payload = {"name": name, "admin_telegram_id": message.from_user.id}
     try:
         r = requests.post(API_CREATE_CAMPAIGN, json=payload, headers=ADMIN_HEADERS, timeout=10)
@@ -520,30 +483,226 @@ async def process_sr_new_campaign(message: Message, state: FSMContext):
         await message.answer(f"Ошибка: {e}")
         await state.clear()
 
-
 # ──────────────────────────────────────────────
 # ЗАВЕРШЕНИЕ РАУНДА + ПЕРЕНОС
 # ──────────────────────────────────────────────
-
 @dp.message(Command("end_round"))
 async def cmd_end_round(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         await message.answer("Только для админов")
         return
-
     campaigns = await get_active_campaigns()
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     for c in campaigns:
         kb.inline_keyboard.append([
             InlineKeyboardButton(text=f"#{c['order_number']} {c['name']}", callback_data=f"er_camp_{c['id']}")
         ])
-
     await message.answer("Выберите кампанию:", reply_markup=kb)
     await state.set_state(EndRoundStates.choose_campaign)
 
-
 @dp.callback_query(lambda c: c.data.startswith("er_camp_"))
 async def process_er_campaign(callback: CallbackQuery, state: FSMContext):
+    try:
+        camp_id = int(callback.data.split("_")[-1])
+    except:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+    rounds = await get_rounds_for_campaign(camp_id)
+    active = [r for r in rounds if r["status"] == "active"]
+    if not active:
+        await callback.message.edit_text("Нет активных раундов в этой кампании.")
+        await state.clear()
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for rd in active:
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"er_round_{rd['id']}")
+        ])
+    await callback.message.edit_text("Выберите раунд для завершения:", reply_markup=kb)
+    await state.set_state(EndRoundStates.choose_round)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("er_round_"))
+async def process_er_round(callback: CallbackQuery, state: FSMContext):
+    try:
+        round_id = int(callback.data.split("_")[-1])
+    except:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+    payload = {"round_id": round_id}
+    try:
+        r = requests.post(API_END_ROUND, json=payload, headers=ADMIN_HEADERS, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        await callback.message.edit_text(f"Раунд завершён.")
+        winners = data.get("winners", [])
+        if not winners:
+            await callback.message.answer("Нет победителей для переноса.")
+            await state.clear()
+            return
+        text = "Победители:\n" + "\n".join([f"{w['full_name']} ({w['votes']})" for w in winners])
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+        # Проверяем активные раунды в той же кампании
+        campaign_id = data.get("ended_round_campaign_id")
+        await state.update_data(campaign_id=campaign_id, winners=winners)
+        active_rounds = await get_rounds_for_campaign(campaign_id)
+        active = [r for r in active_rounds if r["status"] == "active" and r["id"] != round_id]
+        if active:
+            # Есть активные раунды → предлагаем их
+            kb.inline_keyboard.append([InlineKeyboardButton(text="В существующий раунд", callback_data="trans_existing")])
+        else:
+            # Нет активных → сразу переходим к вопросу о winners_count
+            await state.update_data(is_auto_transfer=True)
+            await callback.message.answer(text)
+            await callback.message.answer(
+                "Создаём новый раунд (автоматически).\n"
+                "Сколько победителей выбрать в новом раунде? (по умолчанию 3)"
+            )
+            await state.set_state(StartRoundStates.enter_winners_count)
+            await callback.answer()
+            return
+        # Общие кнопки
+        kb.inline_keyboard.extend([
+            [InlineKeyboardButton(text="В ту же кампанию (новый раунд)", callback_data="trans_same")],
+            [InlineKeyboardButton(text="В новую кампанию", callback_data="trans_new")],
+            [InlineKeyboardButton(text="Не переносить", callback_data="trans_skip")],
+        ])
+        await callback.message.answer(text, reply_markup=kb)
+        await state.set_state(TransferWinnersStates.choose_action)
+    except Exception as e:
+        await callback.message.edit_text(f"Ошибка завершения раунда: {e}")
+        await state.clear()
+        await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "trans_existing")
+async def process_transfer_existing(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    campaign_id = data.get("campaign_id")
+    winners = data.get("winners", [])
+    rounds = await get_rounds_for_campaign(campaign_id)
+    active = [r for r in rounds if r["status"] == "active"]
+    if not active:
+        await callback.message.edit_text("Нет активных раундов для переноса.")
+        await state.clear()
+        await callback.answer()
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for rd in active:
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"trans_exist_round_{rd['id']}")
+        ])
+    kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="trans_skip")])
+    await callback.message.edit_text("Выберите активный раунд для переноса:", reply_markup=kb)
+    await state.set_state(TransferWinnersStates.choose_existing_round)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("trans_exist_round_"))
+async def process_transfer_existing_round(callback: CallbackQuery, state: FSMContext):
+    try:
+        target_round_id = int(callback.data.split("_")[-1])
+    except:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+    data = await state.get_data()
+    winners = data.get("winners", [])
+    result = await transfer_winners_to_round(winners, target_round_id)
+    await callback.message.edit_text(f"Победители перенесены в выбранный раунд. {result}")
+    await state.clear()
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "trans_same")
+async def process_transfer_same(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    winners = data.get("winners", [])
+    campaign_id = data.get("campaign_id")
+    if not winners:
+        await callback.message.edit_text("Нет победителей для переноса.")
+        await state.clear()
+        await callback.answer()
+        return
+    await state.update_data(
+        campaign_id=campaign_id,
+        winners=winners,
+        is_auto_transfer=True   # метка, что это перенос
+    )
+    await callback.message.edit_text(
+        "Создаём новый раунд в этой же кампании.\n"
+        "Сколько победителей будет в новом раунде? (по умолчанию 3)"
+    )
+    await state.set_state(StartRoundStates.enter_winners_count)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "trans_new")
+async def process_transfer_new(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Введите название новой кампании:")
+    await state.set_state(TransferWinnersStates.enter_new_campaign_name)
+    await callback.answer()
+
+@dp.message(TransferWinnersStates.enter_new_campaign_name)
+async def process_transfer_new_campaign(message: Message, state: FSMContext):
+    name = message.text.strip()
+    if not name:
+        await message.answer("Название пустое.")
+        return
+    data = await state.get_data()
+    winners = data.get("winners", [])
+    payload = {"name": name, "admin_telegram_id": message.from_user.id}
+    try:
+        r = requests.post(API_CREATE_CAMPAIGN, json=payload, headers=ADMIN_HEADERS, timeout=10)
+        r.raise_for_status()
+        camp = r.json()
+        campaign_id = camp["campaign_id"]
+        await state.update_data(
+            campaign_id=campaign_id,
+            winners=winners,
+            is_auto_transfer=True
+        )
+        await message.answer(f"Кампания #{camp['campaign_order_number']} создана. Запускаем раунд...")
+        await message.answer("Сколько победителей выбрать в новом раунде? (по умолчанию 3)")
+        await state.set_state(StartRoundStates.enter_winners_count)
+    except Exception as e:
+        await message.answer(f"Ошибка: {e}")
+        await state.clear()
+
+@dp.callback_query(lambda c: c.data == "trans_skip")
+async def process_transfer_skip(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Перенос пропущен.")
+    await state.clear()
+    await callback.answer()
+
+
+
+
+@dp.message(Command("set_current_round"))
+async def cmd_set_current_round(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer("Только для админов")
+        return
+
+    campaigns = await get_active_campaigns()
+    if not campaigns:
+        await message.answer("Нет активных кампаний.")
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for c in campaigns:
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=c['name'], callback_data=f"setcr_camp_{c['id']}")
+        ])
+    kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
+
+    await message.answer("Выберите кампанию:", reply_markup=kb)
+    await state.set_state("set_current_round_camp")
+
+
+@dp.callback_query(lambda c: c.data.startswith("setcr_camp_") or c.data == "cancel")
+async def process_setcr_camp(callback: CallbackQuery, state: FSMContext):
+    if callback.data == "cancel":
+        await callback.message.edit_text("Отменено.")
+        await state.clear()
+        await callback.answer()
+        return
+
     try:
         camp_id = int(callback.data.split("_")[-1])
     except:
@@ -553,23 +712,23 @@ async def process_er_campaign(callback: CallbackQuery, state: FSMContext):
     rounds = await get_rounds_for_campaign(camp_id)
     active = [r for r in rounds if r["status"] == "active"]
     if not active:
-        await callback.message.edit_text("Нет активных раундов в этой кампании.")
+        await callback.message.edit_text("Нет активных раундов.")
         await state.clear()
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     for rd in active:
         kb.inline_keyboard.append([
-            InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"er_round_{rd['id']}")
+            InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"setcr_round_{rd['id']}")
         ])
 
-    await callback.message.edit_text("Выберите раунд для завершения:", reply_markup=kb)
-    await state.set_state(EndRoundStates.choose_round)
+    await callback.message.edit_text("Выберите раунд как текущий:", reply_markup=kb)
+    await state.set_state("set_current_round_round")
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data.startswith("er_round_"))
-async def process_er_round(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(lambda c: c.data.startswith("setcr_round_"))
+async def process_setcr_round(callback: CallbackQuery, state: FSMContext):
     try:
         round_id = int(callback.data.split("_")[-1])
     except:
@@ -578,171 +737,21 @@ async def process_er_round(callback: CallbackQuery, state: FSMContext):
 
     payload = {"round_id": round_id}
     try:
-        r = requests.post(API_END_ROUND, json=payload, headers=ADMIN_HEADERS, timeout=10)
+        r = requests.post(API_SET_CURRENT_ROUND, json=payload, headers=ADMIN_HEADERS, timeout=10)
         r.raise_for_status()
-        data = r.json()
-        await callback.message.edit_text(f"Раунд завершён.")
-
-        winners = data.get("winners", [])
-        if not winners:
-            await callback.message.answer("Нет победителей для переноса.")
-            await state.clear()
-            return
-
-        text = "Победители:\n" + "\n".join([f"{w['full_name']} ({w['votes']})" for w in winners])
-        kb = InlineKeyboardMarkup(inline_keyboard=[])
-
-        # Проверяем активные раунды в той же кампании
-        campaign_id = data.get("ended_round_campaign_id")
-        await state.update_data(campaign_id=campaign_id, winners=winners)
-
-        active_rounds = await get_rounds_for_campaign(campaign_id)
-        active = [r for r in active_rounds if r["status"] == "active" and r["id"] != round_id]
-
-        if active:
-            # Есть активные раунды → предлагаем их
-            kb.inline_keyboard.append([InlineKeyboardButton(text="В существующий раунд", callback_data="trans_existing")])
-        else:
-            # Нет активных → сразу создаём новый и переносим
-            round_payload = {"campaign_id": campaign_id}
-            try:
-                rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
-                rr.raise_for_status()
-                new_round = rr.json()
-                target_round_id = new_round["round_id"]
-                result = await transfer_winners_to_round(winners, target_round_id)
-                await callback.message.answer(f"Создан новый раунд (автоматически). {result}")
-                await state.clear()
-                await callback.answer()
-                return
-            except Exception as e:
-                await callback.message.answer(f"Ошибка создания нового раунда: {e}")
-                await state.clear()
-                await callback.answer()
-                return
-
-        # Общие кнопки
-        kb.inline_keyboard.extend([
-            [InlineKeyboardButton(text="В ту же кампанию (новый раунд)", callback_data="trans_same")],
-            [InlineKeyboardButton(text="В новую кампанию", callback_data="trans_new")],
-            [InlineKeyboardButton(text="Не переносить", callback_data="trans_skip")],
-        ])
-
-        await callback.message.answer(text, reply_markup=kb)
-        await state.set_state(TransferWinnersStates.choose_action)
+        resp = r.json()
+        await callback.message.edit_text(resp.get("message", "Готово!"))
     except Exception as e:
-        await callback.message.edit_text(f"Ошибка завершения раунда: {e}")
-        await state.clear()
-
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "trans_existing")
-async def process_transfer_existing(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    campaign_id = data.get("campaign_id")
-    winners = data.get("winners", [])
-
-    rounds = await get_rounds_for_campaign(campaign_id)
-    active = [r for r in rounds if r["status"] == "active"]
-
-    if not active:
-        await callback.message.edit_text("Нет активных раундов для переноса.")
-        await state.clear()
-        await callback.answer()
-        return
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[])
-    for rd in active:
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text=f"Раунд #{rd['number']}", callback_data=f"trans_exist_round_{rd['id']}")
-        ])
-    kb.inline_keyboard.append([InlineKeyboardButton(text="Отмена", callback_data="trans_skip")])
-
-    await callback.message.edit_text("Выберите активный раунд для переноса:", reply_markup=kb)
-    await state.set_state(TransferWinnersStates.choose_existing_round)
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data.startswith("trans_exist_round_"))
-async def process_transfer_existing_round(callback: CallbackQuery, state: FSMContext):
-    try:
-        target_round_id = int(callback.data.split("_")[-1])
-    except:
-        await callback.answer("Ошибка", show_alert=True)
-        return
-
-    data = await state.get_data()
-    winners = data.get("winners", [])
-
-    result = await transfer_winners_to_round(winners, target_round_id)
-    await callback.message.edit_text(f"Победители перенесены в выбранный раунд. {result}")
-    await state.clear()
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "trans_same")
-async def process_transfer_same(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    winners = data.get("winners", [])
-    campaign_id = data.get("campaign_id")
-
-    round_payload = {"campaign_id": campaign_id}
-    try:
-        rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
-        rr.raise_for_status()
-        new_round = rr.json()
-        target_round_id = new_round["round_id"]
-        result = await transfer_winners_to_round(winners, target_round_id)
-        await callback.message.edit_text(f"Создан новый раунд в той же кампании. {result}")
-    except Exception as e:
-        await callback.message.edit_text(f"Ошибка создания раунда: {e}")
+        await callback.message.edit_text(f"Ошибка: {e}")
 
     await state.clear()
     await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "trans_new")
-async def process_transfer_new(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите название новой кампании:")
-    await state.set_state(TransferWinnersStates.enter_new_campaign_name)
-    await callback.answer()
-
-
-@dp.message(TransferWinnersStates.enter_new_campaign_name)
-async def process_transfer_new_campaign(message: Message, state: FSMContext):
-    name = message.text.strip()
-    if not name:
-        await message.answer("Название пустое.")
-        return
-
-    payload = {"name": name, "admin_telegram_id": message.from_user.id}
-    try:
-        r = requests.post(API_CREATE_CAMPAIGN, json=payload, headers=ADMIN_HEADERS, timeout=10)
-        r.raise_for_status()
-        camp = r.json()
-        round_payload = {"campaign_id": camp["campaign_id"]}
-        rr = requests.post(API_START_ROUND, json=round_payload, headers=ADMIN_HEADERS, timeout=10)
-        rr.raise_for_status()
-        round = rr.json()
-        data = await state.get_data()
-        winners = data.get("winners", [])
-        result = await transfer_winners_to_round(winners, round["round_id"])
-        await message.answer(f"Кампания и раунд созданы. {result}")
-    except Exception as e:
-        await message.answer(f"Ошибка: {e}")
-
-    await state.clear()
-
-
 # ──────────────────────────────────────────────
 # ЗАПУСК
 # ──────────────────────────────────────────────
-
 async def main():
     logger.info("Бот запущен")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())

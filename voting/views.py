@@ -1,12 +1,13 @@
-# voting/views.py (исправленный)
+# voting/views.py (обновлённый)
 from django.shortcuts import render
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from .models import Round, Participant, Vote, Campaign
-from .serializers import ParticipantSerializer, VoteCreateSerializer, CampaignSerializer, RoundSerializer
+from .serializers import ParticipantSerializer, VoteCreateSerializer, CampaignSerializer, RoundSerializer, \
+    TransferWinnersSerializer, StartRoundSerializer, EndRoundSerializer
 
 # Импорт для аутентификации
 from rest_framework.authentication import TokenAuthentication
@@ -15,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 class CurrentRoundResults(APIView):
     permission_classes = [AllowAny]
+
     def get(self, request):
         active_rounds = Round.objects.filter(status="active").order_by("started_at")
 
@@ -28,7 +30,7 @@ class CurrentRoundResults(APIView):
                 if not current_round:
                     current_round = active_rounds.first()  # fallback
             except ValueError:
-                pass  # если некорректный id → берём самый свежий
+                pass
 
         context = {
             "round": current_round,
@@ -41,7 +43,7 @@ class CurrentRoundResults(APIView):
 
         if current_round:
             participants_with_votes = Participant.objects.filter(round=current_round) \
-                .annotate(votes=Count("vote")) \
+                .annotate(votes=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))) \
                 .order_by("-votes", "order_number", "full_name")
 
             results = [
@@ -53,15 +55,23 @@ class CurrentRoundResults(APIView):
                 for p in participants_with_votes
             ]
 
-            mid = (len(results) + 1) // 2
-            left = results[:mid]
-            right = results[mid:]
+            if current_round.type == "individual":
+                # Для индивидуального — только один столбец, максимум 1 участник
+                mid = len(results)  # всё в левую колонку
+                context["left_column"] = [
+                    {**item, "position": i + 1} for i, item in enumerate(results)
+                ]
+                context["right_column"] = []  # пустой правый столбец
+            else:
+                # Обычная логика для стандартного
+                mid = (len(results) + 1) // 2
+                left = results[:mid]
+                right = results[mid:]
 
-            context.update({
-                "left_column": [{**item, "position": i + 1} for i, item in enumerate(left)],
-                "right_column": [{**item, "position": mid + 1 + i} for i, item in enumerate(right)],
-                "total_votes": Vote.objects.filter(round=current_round).count(),
-            })
+                context["left_column"] = [{**item, "position": i + 1} for i, item in enumerate(left)]
+                context["right_column"] = [{**item, "position": mid + 1 + i} for i, item in enumerate(right)]
+
+            context["total_votes"] = Vote.objects.filter(round=current_round).count()
 
         return render(request, "voting/results.html", context)
 
@@ -93,6 +103,7 @@ class ActiveRoundParticipants(APIView):
         return Response({
             "round_id": round_obj.id,
             "round_name": str(round_obj),
+            "round_type": round_obj.type,
             "participants": serializer.data
         })
 
@@ -116,17 +127,18 @@ class ActiveRoundInfo(APIView):
         if user_id_str:
             try:
                 user_telegram_id = int(user_id_str)
-                user_vote = Vote.objects.get(round=round_obj, user_telegram_id=user_telegram_id)
+                user_vote = Vote.objects.filter(round=round_obj, user_telegram_id=user_telegram_id).first()
             except (ValueError, Vote.DoesNotExist):
                 pass
 
         participants = Participant.objects.filter(round=round_obj).annotate(
-            votes_count=Count("vote")
+            votes_count=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
         ).order_by("-votes_count", "order_number", "full_name")
 
         data = {
             "round_id": round_obj.id,
             "round_name": str(round_obj),
+            "round_type": round_obj.type,
             "status": round_obj.status,
             "participants": [
                 {
@@ -145,6 +157,7 @@ class ActiveRoundInfo(APIView):
                 "participant_id": user_vote.participant.id,
                 "participant_order": user_vote.participant.order_number,
                 "participant_name": user_vote.participant.full_name,
+                "choice": user_vote.choice,
                 "voted_at": user_vote.created_at.isoformat()
             }
 
@@ -200,36 +213,40 @@ class StartRoundAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        campaign_id = request.data.get("campaign_id")
-        if not campaign_id:
-            return Response({"error": "campaign_id обязателен"}, status=400)
+        print("Полученные данные в API:", request.data)
+        serializer = StartRoundSerializer(data=request.data)
+        if not serializer.is_valid():
+            print("Ошибки валидации:", serializer.errors)
+            return Response(serializer.errors, status=400)
 
+        data = serializer.validated_data
         try:
-            campaign = Campaign.objects.get(id=int(campaign_id))
-            number = request.data.get("number")
+            campaign = Campaign.objects.get(id=data["campaign_id"])
+            number = data.get("number")
             if number is None:
-                max_number = Round.objects.filter(campaign=campaign).aggregate(
-                    max_num=Max('number')
-                )['max_num'] or 0
+                max_number = Round.objects.filter(campaign=campaign).aggregate(max_num=Max('number'))['max_num'] or 0
                 number = max_number + 1
-
-            winners_count = request.data.get("winners_count", 3)  # Исправлено: добавлено чтение winners_count из request, default=3
+            winners_count = data["winners_count"]
+            round_type = data["type"]
 
             round_obj = Round.objects.create(
                 campaign=campaign,
-                number=int(number),
+                number=number,
                 status="active",
-                winners_count=winners_count  # Исправлено: сохранение winners_count в модель
+                winners_count=winners_count,
+                type=round_type
             )
             return Response({
                 "status": "ok",
                 "round_id": round_obj.id,
                 "round_number": round_obj.number,
-                "message": f"Раунд №{round_obj.number} запущен в кампании {campaign.name}"
+                "round_type": round_obj.type,
+                "message": f"Раунд №{round_obj.number} ({round_obj.get_type_display()}) запущен"
             })
         except Campaign.DoesNotExist:
             return Response({"error": "Кампания не найдена"}, status=404)
         except Exception as e:
+            print("Исключение в StartRoundAPIView:", str(e))
             return Response({"error": str(e)}, status=400)
 
 
@@ -238,12 +255,13 @@ class EndRoundAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        round_id = request.data.get("round_id")
-        if not round_id:
-            return Response({"error": "round_id обязателен"}, status=400)
+        serializer = EndRoundSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
 
+        round_id = serializer.validated_data["round_id"]
         try:
-            round_obj = Round.objects.get(id=int(round_id))
+            round_obj = Round.objects.get(id=round_id)
             if round_obj.status == "ended":
                 return Response({"error": "Раунд уже завершён"}, status=400)
 
@@ -251,9 +269,9 @@ class EndRoundAPIView(APIView):
             round_obj.ended_at = timezone.now()
             round_obj.save(update_fields=["status", "ended_at"])
 
-            # Считаем голоса по участникам
+            # Подсчёт победителей (как было)
             participants_with_votes = Participant.objects.filter(round=round_obj).annotate(
-                votes_count=Count("vote")
+                votes_count=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
             ).order_by("-votes_count")
 
             if not participants_with_votes:
@@ -261,7 +279,9 @@ class EndRoundAPIView(APIView):
                     "status": "ok",
                     "message": f"Раунд #{round_obj.number} завершён",
                     "winners_count": round_obj.winners_count,
-                    "winners": []
+                    "winners": [],
+                    "round_type": round_obj.type,
+                    "ended_round_campaign_id": round_obj.campaign.id
                 })
 
             # Получаем уникальные значения голосов, отсортированные по убыванию
@@ -282,23 +302,32 @@ class EndRoundAPIView(APIView):
             # Все участники с баллами >= min_votes
             winners = participants_with_votes.filter(votes_count__gte=min_votes)
 
-            winners_data = [
-                {
+            winners_data = []
+            for p in winners:
+                winner_dict = {
                     "participant_id": p.id,
                     "participant_order": p.order_number,
                     "full_name": p.full_name,
                     "votes": p.votes_count,
                 }
-                for p in winners
-            ]
+                if round_obj.type == "individual":
+                    # Добавляем список проголосовавших "yes"
+                    yes_voters = Vote.objects.filter(
+                        participant=p, choice="yes"
+                    ).values_list("user_telegram_id", flat=True)
+                    winner_dict["yes_voters"] = list(yes_voters)
 
-            return Response({
+                winners_data.append(winner_dict)
+
+            response_data = {
                 "status": "ok",
                 "message": f"Раунд #{round_obj.number} завершён",
                 "winners_count": round_obj.winners_count,
                 "winners": winners_data,
+                "round_type": round_obj.type,
                 "ended_round_campaign_id": round_obj.campaign.id
-            })
+            }
+            return Response(response_data)
         except Round.DoesNotExist:
             return Response({"error": "Раунд не найден"}, status=404)
 
@@ -319,6 +348,7 @@ class AddParticipantAPIView(APIView):
             if round_obj.status != "active":
                 return Response({"error": "Раунд не активен"}, status=400)
 
+            # Для individual — опционально ограничить на одного, но не обязательно (если несколько — ок)
             participant = Participant.objects.create(
                 round=round_obj,
                 full_name=full_name.strip().title(),
@@ -367,3 +397,126 @@ class GetCurrentRoundAPIView(APIView):
         if not round_obj:
             return Response({"current_round_id": None})
         return Response({"current_round_id": round_obj.id})
+
+
+class TransferWinnersAPIView(APIView):
+    """
+    Перенос победителей из завершённого раунда (обычно индивидуального)
+    в указанный активный стандартный раунд.
+    Создаёт реальные голоса (Vote) в новом раунде для каждого "Да" из индивидуального.
+    """
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = TransferWinnersSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        round_id = data["round_id"]
+        target_round_id = data["target_round_id"]
+
+        try:
+            # 1. Проверяем исходный раунд
+            round_obj = Round.objects.get(id=round_id)
+
+            if round_obj.status != "ended":
+                return Response(
+                    {"error": "Исходный раунд должен быть завершён для переноса"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 2. Проверяем целевой раунд
+            target_round = Round.objects.get(
+                id=target_round_id,
+                status="active",
+                type="standard"
+            )
+
+            # 3. Собираем победителей
+            participants_with_votes = Participant.objects.filter(round=round_obj).annotate(
+                votes_count=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
+            ).order_by("-votes_count")
+
+            if not participants_with_votes.exists():
+                return Response({
+                    "status": "ok",
+                    "message": "В раунде нет участников с голосами — перенос не требуется",
+                    "transferred": 0,
+                    "transferred_votes": 0
+                })
+
+            # Определяем порог для победителей (как в end-round)
+            unique_votes = participants_with_votes.values_list("votes_count", flat=True).distinct()
+            top_n_scores = list(unique_votes)[:round_obj.winners_count]
+
+            if not top_n_scores:
+                min_votes = 0
+            elif len(top_n_scores) < round_obj.winners_count:
+                min_votes = min(top_n_scores)
+            else:
+                min_votes = top_n_scores[-1]
+
+            winners = participants_with_votes.filter(votes_count__gte=min_votes)
+
+            # 4. Переносим каждого победителя
+            transfer_count = 0
+            total_transferred_votes = 0
+
+            for p in winners:
+                # Получаем всех, кто проголосовал "Да"
+                yes_voters = Vote.objects.filter(
+                    participant=p,
+                    choice="yes"
+                ).values_list("user_telegram_id", flat=True)
+
+                votes_count = len(yes_voters)
+                total_transferred_votes += votes_count
+
+                # Создаём нового участника
+                new_participant = Participant.objects.create(
+                    round=target_round,
+                    full_name=p.full_name,
+                    description=(
+                        f"Перенесён из индивидуального раунда №{round_obj.number} "
+                        f"(перенесено {votes_count} голосов «Да»)"
+                    )
+                )
+
+                # Создаём реальные голоса в новом раунде
+                for user_tg_id in yes_voters:
+                    # Защита от дублей (на всякий случай)
+                    if not Vote.objects.filter(
+                        round=target_round,
+                        participant=new_participant,
+                        user_telegram_id=user_tg_id
+                    ).exists():
+                        Vote.objects.create(
+                            round=target_round,
+                            participant=new_participant,
+                            user_telegram_id=user_tg_id,
+                            choice=None  # стандартный раунд
+                        )
+
+                transfer_count += 1
+
+            return Response({
+                "status": "ok",
+                "message": f"Перенесено {transfer_count} участников с {total_transferred_votes} голосами в раунд №{target_round.number}",
+                "transferred": transfer_count,
+                "transferred_votes": total_transferred_votes,
+                "target_round_id": target_round.id,
+                "target_round_number": target_round.number
+            })
+
+        except Round.DoesNotExist:
+            return Response(
+                {"error": "Исходный или целевой раунд не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Ошибка при переносе: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

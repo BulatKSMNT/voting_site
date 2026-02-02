@@ -1,3 +1,4 @@
+# voting/models.py (обновлённый)
 from django.db import models
 from django.db.models import Max
 
@@ -28,8 +29,13 @@ class Campaign(models.Model):
 
 class Round(models.Model):
     """Раунд голосования"""
+    ROUND_TYPES = [
+        ("standard", "Стандартный"),
+        ("individual", "Индивидуальный"),
+    ]
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="rounds")
     number = models.PositiveSmallIntegerField(verbose_name="Номер раунда")
+    type = models.CharField(max_length=20, choices=ROUND_TYPES, default="standard", verbose_name="Тип раунда")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершён в")
     status = models.CharField(
@@ -47,7 +53,7 @@ class Round(models.Model):
         ordering = ['-started_at']
 
     def __str__(self):
-        return f"{self.campaign} — раунд {self.number}"
+        return f"{self.campaign} — раунд {self.number} ({self.get_type_display()})"
 
     def save(self, *args, **kwargs):
         # При создании нового текущего раунда снимаем флаг с предыдущего
@@ -83,15 +89,20 @@ class Participant(models.Model):
 
 class Vote(models.Model):
     """Голос пользователя"""
+    VOTE_CHOICES = [
+        ("yes", "Да"),
+        ("no", "Нет"),
+    ]
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="votes")
     participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
     user_telegram_id = models.BigIntegerField(verbose_name="Telegram ID проголосовавшего")
+    choice = models.CharField(max_length=3, choices=VOTE_CHOICES, null=True, blank=True, verbose_name="Выбор (для индивидуального)")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Голос"
         verbose_name_plural = "Голоса"
-        unique_together = ["round", "user_telegram_id"]
+        unique_together = ["round", "user_telegram_id", "participant"]  # Изменено: уникальность по round + user + participant (для множественного в standard)
 
     def __str__(self):
-        return f"{self.user_telegram_id} → {self.participant.full_name}"
+        return f"{self.user_telegram_id} → {self.participant.full_name} ({self.choice or 'standard'})"

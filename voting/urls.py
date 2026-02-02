@@ -8,7 +8,7 @@ from .views import (
     StartRoundAPIView,
     EndRoundAPIView,
     AddParticipantAPIView,
-    CreateCampaignAPIView, ActiveCampaignsList, SetCurrentRoundAPIView, GetCurrentRoundAPIView
+    CreateCampaignAPIView, ActiveCampaignsList, SetCurrentRoundAPIView, GetCurrentRoundAPIView, TransferWinnersAPIView
 )
 
 urlpatterns = [
@@ -22,6 +22,7 @@ urlpatterns = [
     path('active-participants/', ActiveRoundParticipants.as_view(), name='active-participants'),
     path('active-round-info/', ActiveRoundInfo.as_view(), name='active-round-info'),
     path('active-rounds/', ActiveRoundsList.as_view(), name='active-rounds'),
+    path('active-rounds', ActiveRoundsList.as_view(), name='active-rounds'),
 
     # Админ-действия
     path('start-round/', StartRoundAPIView.as_view(), name='start-round'),
@@ -31,4 +32,5 @@ urlpatterns = [
     path('active-campaigns/', ActiveCampaignsList.as_view(), name='active-campaigns'),
     path('set-current-round/', SetCurrentRoundAPIView.as_view(), name='set-current-round'),
     path('get-current-round/', GetCurrentRoundAPIView.as_view(), name='get-current-round'),
+    path('transfer-winners/', TransferWinnersAPIView.as_view(), name='transfer-winners'),
 ]

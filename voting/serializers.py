@@ -2,14 +2,12 @@
 from rest_framework import serializers
 from .models import Vote, Participant, Round, Campaign
 
-
 class ParticipantSerializer(serializers.ModelSerializer):
     order_number = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Participant
         fields = ["id", "order_number", "full_name", "description"]
-
 
 class VoteCreateSerializer(serializers.ModelSerializer):
     choice = serializers.ChoiceField(choices=Vote.VOTE_CHOICES, required=False, allow_null=True)
@@ -22,14 +20,12 @@ class VoteCreateSerializer(serializers.ModelSerializer):
         round_obj = data["round"]
         if round_obj.status != "active":
             raise serializers.ValidationError("Раунд не активен")
-
         if Vote.objects.filter(
-                round=round_obj,
-                user_telegram_id=data["user_telegram_id"],
-                participant=data["participant"]
+            round=round_obj,
+            user_telegram_id=data["user_telegram_id"],
+            participant=data["participant"]
         ).exists():
-            raise serializers.ValidationError("Вы уже голосовали за этого участника в этом раунде")
-
+            raise serializers.ValidationError("Вы уже проголосовали за этого участника в этом раунде. Один голос на участника!")
         if round_obj.type == "individual":
             if "choice" not in data or data["choice"] not in ["yes", "no"]:
                 raise serializers.ValidationError("Для индивидуального раунда требуется choice: 'yes' или 'no'")
@@ -38,14 +34,12 @@ class VoteCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Для стандартного раунда choice не требуется")
         return data
 
-
 class CampaignSerializer(serializers.ModelSerializer):
     order_number = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Campaign
         fields = ["id", "order_number", "name", "admin_telegram_id", "is_active"]
-
 
 class RoundSerializer(serializers.ModelSerializer):
     campaign_name = serializers.CharField(source="campaign.name", read_only=True)
@@ -66,5 +60,5 @@ class EndRoundSerializer(serializers.Serializer):
     round_id = serializers.IntegerField(required=True)
 
 class TransferWinnersSerializer(serializers.Serializer):
-    round_id = serializers.IntegerField(required=True)  # завершённый раунд
+    round_id = serializers.IntegerField(required=True)
     target_round_id = serializers.IntegerField(required=True)

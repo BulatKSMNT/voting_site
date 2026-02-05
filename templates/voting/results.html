@@ -16,113 +16,156 @@
             min-height: 100vh;
             margin: 0;
             padding: 0;
-            background-image: radial-gradient(circle at 10% 20%, rgba(255, 0, 80, 0.08) 0%, transparent 20%),
-                              radial-gradient(circle at 90% 80%, rgba(0, 255, 200, 0.08) 0%, transparent 20%);
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(255, 0, 80, 0.08) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(0, 255, 200, 0.08) 0%, transparent 20%);
             background-attachment: fixed;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        ::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+        body::-webkit-scrollbar {
+            display: none;
         }
 
         .container {
             max-width: 1400px;
-            padding: 2rem 1rem;
-            position: relative;
+            padding: 1.5rem 1rem;
         }
 
+        /* Верхняя навигация: кнопка домой + раунды */
+        .top-nav {
+            padding: 1.5rem 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .back-btn {
+            display: inline-block;
+            padding: 0.9rem 2.2rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            background: linear-gradient(45deg, #ff0050, #c4003d);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(255,0,80,0.5);
+        }
+
+        .back-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 35px rgba(255,0,80,0.7);
+        }
+
+        /* Основной контент */
+        .main-content {
+            background: rgba(20,20,20,0.88);
+            border-radius: 16px;
+            border: 1px solid #333;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.65);
+            padding: 2rem 1.5rem;
+            margin-bottom: 3rem;
+            min-height: 100vh
+        }
+
+        /* Заголовок + лого + QR на одной линии */
         .header-wrapper {
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
-            padding: 2rem 0 1.5rem;
+            gap: 1.5rem;           /* расстояние между элементами */
+            flex-wrap: wrap;
+            padding: 1.5rem 0 2rem;
+        }
+
+        .logo-box, .qr-box {
+            width: 110px;
+            height: 110px;
+            background: white;
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 0 18px rgba(0, 255, 200, 0.45);
+            border: 3px solid #00ffc8;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .logo-box img, .qr-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
         }
 
         .header {
             text-align: center;
-            background: linear-gradient(180deg, rgba(20,20,20,0.9) 0%, rgba(10,10,10,0.9) 100%);
+            background: linear-gradient(180deg, rgba(20,20,20,0.92) 0%, rgba(10,10,10,0.92) 100%);
             border-radius: 16px;
             border: 3px solid #ff0050;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-            padding: 1.5rem 3rem;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+            padding: 1.2rem 2.5rem;
             flex: 1;
-            max-width: 70%;
+            max-width: 720px;
+            min-width: 320px;
         }
 
         .header h1 {
-            font-size: 2.8rem;
-            font-weight: 700;
+            font-size: 2.6rem;
+            font-weight: 800;
             margin: 0;
             color: #ff0050;
-            text-shadow: 0 0 20px rgba(255,0,80,0.6);
+            text-shadow: 0 0 18px rgba(255,0,80,0.65);
+            line-height: 1.1;
         }
 
         .header .total {
-            font-size: 1.4rem;
+            font-size: 1.35rem;
             color: #00ffc8;
-            text-shadow: 0 0 15px rgba(0,255,200,0.5);
-            margin-top: 0.5rem;
+            text-shadow: 0 0 12px rgba(0,255,200,0.5);
+            margin-top: 0.6rem;
         }
 
-        /* Лого и QR симметрично */
-        .logo-container,
-        .qr-container {
-            position: absolute;
-            top: 2rem;
-            width: 140px;
-            height: 140px;
-            background: white;
-            padding: 10px;
-            border-radius: 12px;
-            box-shadow: 0 0 20px rgba(0, 255, 200, 0.5);
-            z-index: 10;
-            border: 3px solid #00ffc8;
-            overflow: hidden;
-        }
-
-        .logo-container { left: 2rem; }
-        .qr-container   { right: 2rem; }
-
-        .logo-container img,
-        .qr-container img {
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain;
-            display: block;
-            border-radius: 8px;
-        }
-
+        /* Таблица результатов */
         .results-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 0;
-            margin-top: 2rem;
-            background: rgba(20,20,20,0.85);
+            margin-top: 1rem;
+            background: rgba(20,20,20,0.9);
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
             border: 1px solid #333;
         }
 
         .individual-grid {
             grid-template-columns: 1fr;
-            max-width: 900px;
-            margin: 2rem auto;
+            max-width: 1000px;
+            margin: 2rem auto 0;
         }
 
-        .column {
-            display: flex;
-            flex-direction: column;
-        }
+        .column { display: flex; flex-direction: column; }
 
         .snake-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.2rem 1.5rem;
+            padding: 1.4rem 1.8rem;
             border-bottom: 1px solid #444;
-            transition: all 0.2s;
+            transition: background 0.2s;
         }
 
         .snake-item:hover {
-            background: rgba(255,0,80,0.1);
+            background: rgba(255,0,80,0.12);
         }
 
         .snake-item:nth-child(even) {
@@ -130,33 +173,41 @@
         }
 
         .position {
-            width: 60px;
+            width: 70px;
             font-weight: bold;
             color: #00ffc8;
-            text-shadow: 0 0 10px rgba(0,255,200,0.5);
+            text-shadow: 0 0 12px rgba(0,255,200,0.6);
             text-align: center;
-            font-size: 1.3rem;
+            font-size: 1.5rem;
         }
 
         .name {
             flex: 1;
-            font-size: 1.2rem;
-            padding: 0 1rem;
+            font-size: 1.35rem;
+            padding: 0 1.5rem;
         }
 
         .votes {
             font-weight: bold;
             color: #ff0050;
-            text-shadow: 0 0 10px rgba(255,0,80,0.5);
-            min-width: 100px;
+            text-shadow: 0 0 12px rgba(255,0,80,0.6);
+            min-width: 120px;
             text-align: right;
-            font-size: 1.3rem;
+            font-size: 1.45rem;
+        }
+
+        /* Нижний блок */
+        .bottom-controls {
+            background: rgba(10,10,10,0.95);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid #333;
+            padding: 1.5rem 1rem;
+            text-align: center;
         }
 
         .back-btn {
-            display: block;
-            margin: 3rem auto 1rem;
-            padding: 1rem 2.5rem;
+            display: inline-block;
+            padding: 1rem 2.8rem;
             font-size: 1.3rem;
             font-weight: bold;
             background: linear-gradient(45deg, #ff0050, #c4003d);
@@ -166,24 +217,32 @@
             text-decoration: none;
             transition: all 0.3s;
             box-shadow: 0 0 25px rgba(255,0,80,0.6);
-            text-align: center;
+            margin-bottom: 1.5rem;
         }
 
         .back-btn:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 0 40px rgba(255,0,80,0.8);
+            transform: translateY(-3px);
+            box-shadow: 0 0 40px rgba(255,0,80,0.85);
             background: linear-gradient(45deg, #ff3370, #e60045);
         }
 
+        .rounds-section h3 {
+            color: #00ffc8;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
         .btn-custom {
-            background-color: transparent;
+            background: transparent;
             border: 2px solid #ff0050;
             color: #ff0050;
-            transition: all 0.3s ease;
+            transition: all 0.3s;
+            min-width: 150px;
+            margin: 0 0.4rem 0.6rem;
         }
 
         .btn-custom:hover {
-            background-color: rgba(255, 0, 80, 0.15);
+            background: rgba(255,0,80,0.18);
             color: white;
             border-color: #ff3370;
         }
@@ -192,144 +251,125 @@
             background: linear-gradient(45deg, #ff0050, #c4003d);
             border: none;
             color: white;
-            box-shadow: 0 0 20px rgba(255, 0, 80, 0.5);
-        }
-
-        .btn-custom-active:hover {
-            background: linear-gradient(45deg, #ff3370, #e60045);
-            box-shadow: 0 0 30px rgba(255, 0, 80, 0.7);
+            box-shadow: 0 0 20px rgba(255,0,80,0.6);
+            font-weight: bold;
         }
 
         @media (max-width: 992px) {
-            .results-grid,
-            .individual-grid {
+            .results-grid, .individual-grid {
                 grid-template-columns: 1fr;
             }
-
             .snake-item:nth-child(even) {
                 border-left: none;
             }
-
-            .logo-container,
-            .qr-container {
+            .logo-container, .qr-container {
                 position: static;
                 margin: 1rem auto;
-                width: 180px;
-                height: 180px;
+                width: 160px;
+                height: 160px;
             }
-
-            .header-wrapper {
-                flex-direction: column;
-            }
-
-            .header {
-                max-width: 100%;
-                margin-top: 20px;
-            }
-
             .header h1 {
-                font-size: 2.2rem;
+                font-size: 2.4rem;
+            }
+            .header {
+                padding: 1.5rem 2rem;
+                max-width: 95%;
             }
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-
-    <div class="logo-container">
-        <img src="{% static 'images/logo.png' %}" alt="Логотип Битва Ведущих">
-    </div>
-
-    <div class="qr-container">
-        <img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота">
-    </div>
+<!-- Основной контент — занимает почти всю страницу -->
+<div class="main-content">
 
     <div class="header-wrapper">
-        <div class="header">
-            <h1>БИТВА ВЕДУЩИХ</h1>
+            <div class="logo-box">
+                <img src="{% static 'images/logo.png' %}" alt="Логотип">
+            </div>
 
-            {% if round %}
+            <div class="header">
+                <h1>БИТВА ВЕДУЩИХ</h1>
+                {% if round %}
                 <div class="total">
-<!--                    {{ round }} — {{ round.get_type_display|default:"Стандартный" }}-->
-<!--                    <br>-->
-                    <span style="color: #00ffc8;">
-                        Всего голосов: {{ total_votes|default:0 }}
-                    </span>
+                    <span style="color: #00ffc8;">Всего голосов: {{ total_votes|default:0 }}</span>
                 </div>
-            {% else %}
+                {% else %}
                 <div class="total text-warning">
                     Активного раунда сейчас нет
                 </div>
-            {% endif %}
+                {% endif %}
+            </div>
+
+            <div class="qr-box">
+                <img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота">
+            </div>
         </div>
-    </div>
 
     {% if round %}
         {% if round.type == "individual" %}
-            <!-- Индивидуальный раунд — один столбец -->
             <div class="results-grid individual-grid">
                 <div class="column">
                     {% for row in left_column %}
-                        <div class="snake-item">
-                            <span class="position">{{ row.position }}</span>
-                            <span class="name">{{ row.participant_full_name }}</span>
-                            <span class="votes">{{ row.votes }} «Да»</span>
-                        </div>
+                    <div class="snake-item">
+                        <span class="position">{{ row.position }}</span>
+                        <span class="name">{{ row.participant_full_name }}</span>
+                        <span class="votes">{{ row.votes }} «Да»</span>
+                    </div>
                     {% empty %}
-                        <div class="snake-item text-center text-muted py-4">
-                            Нет участников в этом раунде
-                        </div>
+                    <div class="snake-item text-center text-muted py-5">
+                        Нет участников в этом раунде
+                    </div>
                     {% endfor %}
                 </div>
             </div>
         {% else %}
-            <!-- Стандартный раунд — два столбца -->
             <div class="results-grid">
                 <div class="column">
                     {% for row in left_column %}
-                        <div class="snake-item">
-                            <span class="position">{{ row.position }}</span>
-                            <span class="name">{{ row.participant_full_name }}</span>
-                            <span class="votes">{{ row.votes }}</span>
-                        </div>
+                    <div class="snake-item">
+                        <span class="position">{{ row.position }}</span>
+                        <span class="name">{{ row.participant_full_name }}</span>
+                        <span class="votes">{{ row.votes }}</span>
+                    </div>
                     {% endfor %}
                 </div>
-
                 <div class="column">
                     {% for row in right_column %}
-                        <div class="snake-item">
-                            <span class="position">{{ row.position }}</span>
-                            <span class="name">{{ row.participant_full_name }}</span>
-                            <span class="votes">{{ row.votes }}</span>
-                        </div>
+                    <div class="snake-item">
+                        <span class="position">{{ row.position }}</span>
+                        <span class="name">{{ row.participant_full_name }}</span>
+                        <span class="votes">{{ row.votes }}</span>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
         {% endif %}
     {% endif %}
 
+</div>
+
+<!-- Нижний блок — кнопка домой + раунды -->
+<div class="bottom-controls">
     <a href="{% url 'home' %}" class="back-btn">
         <i class="bi bi-arrow-left-circle-fill"></i> Вернуться на главную
     </a>
 
     {% if active_rounds %}
-        <div class="mt-5 mb-4 text-center">
-            <h3 style="color: #00ffc8; margin-bottom: 1.2rem;">Активные раунды</h3>
-            <div class="d-flex flex-wrap justify-content-center gap-3">
-                {% for r in active_rounds %}
-                    <a href="?round_id={{ r.id }}"
-                       class="btn {% if r.id == selected_round_id %}btn-custom-active{% else %}btn-custom{% endif %}"
-                       style="min-width: 140px; font-weight: {% if r.id == selected_round_id %}bold{% else %}normal{% endif %};">
-                        Раунд №{{ r.number }}
-                        {% if r.type == "individual" %}(индивидуальный){% endif %}
-                        {% if r.id == selected_round_id %}<span class="ms-1">★</span>{% endif %}
-                    </a>
-                {% endfor %}
-            </div>
+    <div class="rounds-section">
+        <h3>Активные раунды</h3>
+        <div class="d-flex flex-wrap justify-content-center gap-3">
+            {% for r in active_rounds %}
+            <a href="?round_id={{ r.id }}"
+               class="btn {% if r.id == selected_round_id %}btn-custom-active{% else %}btn-custom{% endif %}">
+                Раунд №{{ r.number }}
+                {% if r.type == "individual" %}(индивидуальный){% endif %}
+                {% if r.id == selected_round_id %}<span class="ms-1">★</span>{% endif %}
+            </a>
+            {% endfor %}
         </div>
+    </div>
     {% endif %}
-
 </div>
 
 <script>
@@ -337,7 +377,6 @@
         location.reload();
     }, 10000);
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

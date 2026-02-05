@@ -17,7 +17,7 @@ class CurrentRoundResults(APIView):
 
     def get(self, request):
         try:
-            active_rounds = Round.objects.filter(status="active").order_by("started_at")
+            active_rounds = Round.objects.filter(status__in=["pending", "active"]).order_by("started_at")
             current_round = active_rounds.first() if active_rounds.exists() else None
             round_id_str = request.GET.get("round_id")
             if round_id_str:

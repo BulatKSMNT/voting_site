@@ -35,8 +35,8 @@ API_SET_CURRENT_ROUND = f"{DJANGO_API_BASE}/api/set-current-round/"
 API_GET_CURRENT_ROUND = f"{DJANGO_API_BASE}/api/get-current-round/"
 API_TRANSFER_WINNERS = f"{DJANGO_API_BASE}/api/transfer-winners/"
 
-ADMIN_IDS = [1251634923, 1401411234]
-
+ADMIN_IDS = [1251634923, ]
+#1401411234
 # Заголовки
 PUBLIC_HEADERS = {"Content-Type": "application/json"}
 ADMIN_HEADERS = {"Authorization": f"Token {DJANGO_API_TOKEN}", "Content-Type": "application/json"}
@@ -251,10 +251,11 @@ async def cmd_show_participants(message: Message):
         participants = data["participants"]
         user_votes = data.get("user_votes", [])  # Список всех голосов
         print(round_name)
-        text = f"<b>{round_name}</b>\n\n"
+        text = ""
+        #text = f"<b>{round_name}</b>\n\n"
         kb = InlineKeyboardMarkup(inline_keyboard=[])
         if round_type == "individual":
-            text += "<b>Оцените ведущего</b>\n\n"
+            text += "Готовы ли вы пригласить на свое мероприятие такого ведущего, как\n"
             if len(participants) == 0:
                 text += "Участников пока нет\n"
             else:
@@ -262,16 +263,16 @@ async def cmd_show_participants(message: Message):
                     full_name = p.get('full_name', '???')
                     description = p.get('description', '').strip()
                     # Основное сообщение — имя и описание крупно
-                    text += f"<b>{full_name}</b>\n"
-                    if description:
-                        text += f"{description}\n"
-                    text += f"Голосов «Да»: {p['votes']}\n\n"
+                    text += f"<b>{full_name}</b> ?"
+                    # if description:
+                    #     text += f"{description}\n"
+                    #text += f"Голосов «Да»: {p['votes']}\n\n"
                     # Если пользователь уже голосовал — добавляем информацию
                     user_vote = next((v for v in user_votes if v["participant_id"] == p["id"]), None)
                     if user_vote:
                         choice_upper = user_vote.get('choice', '').upper()
                         # participant_name = user_vote.get('participant_name', '???')
-                        text += f"Вы уже оставили голос "
+                        text += f"\n\nВы уже проголосовали "
                         if choice_upper == 'YES':
                             text += f"за данного ведущего\n\n"
                         else:
@@ -283,7 +284,7 @@ async def cmd_show_participants(message: Message):
                     da_text = "Да"
                     user_vote = next((v for v in user_votes if v["participant_id"] == p["id"]), None)
                     if user_vote and user_vote.get("choice") == "yes":
-                        da_text += " ✓"
+                        da_text += " ❤️"
                     row.append(
                         InlineKeyboardButton(
                             text=da_text,
@@ -293,7 +294,7 @@ async def cmd_show_participants(message: Message):
                     # Кнопка "Нет"
                     net_text = "Нет"
                     if user_vote and user_vote.get("choice") == "no":
-                        net_text += " ✓"
+                        net_text += " 💔"
                     row.append(
                         InlineKeyboardButton(
                             text=net_text,
@@ -307,9 +308,9 @@ async def cmd_show_participants(message: Message):
             text += "Вы можете голосовать за нескольких (по 1 на каждого).\n"
             text += "Выберите участников (можно нескольких):\n"
             for p in participants:
-                btn_text = f"#{p['order_number']} {p.get('full_name', '?')} ({p['votes']} голосов)"
+                btn_text = f"#{p['order_number']} {p.get('full_name', '?')}" #({p['votes']} голосов)
                 if p["id"] in voted_participant_ids:
-                    btn_text += " ✓"
+                    btn_text += " ❤️   "
                 kb.inline_keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"vote_{data['round_id']}_{p['id']}")])
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
@@ -342,7 +343,7 @@ async def process_vote_callback(callback: CallbackQuery):
     try:
         # Пытаемся отдать голос
         await api_post(API_VOTE_URL, payload, PUBLIC_HEADERS, timeout=8)
-        await callback.answer("Голос учтён! ❤️", show_alert=False)
+        await callback.answer("Голос учтён! Спасибо! ❤️", show_alert=True)
 
     except aiohttp.ClientResponseError as e:
         msg = "Не удалось проголосовать 😔"
@@ -356,7 +357,7 @@ async def process_vote_callback(callback: CallbackQuery):
 
         lower_text = error_text.lower()
         if "unique" in lower_text or "уже проголосовал" in lower_text:
-            msg = "Ты уже проголосовал за этого участника ✓"
+            msg = "Вы уже проголосовали. Голос нельзя изменить"
             is_already_voted = True
 
         await callback.answer(msg, show_alert=True)
@@ -389,28 +390,30 @@ async def process_vote_callback(callback: CallbackQuery):
         participants = fresh_data["participants"]
         user_votes = fresh_data.get("user_votes", [])
 
-        text = f"<b>{round_name}</b>\n\n"
+        #text = f"<b>{round_name}</b>\n\n"
+        text = ""
         kb = InlineKeyboardMarkup(inline_keyboard=[])
 
         if round_type == "individual":
-            text += "<b>Оцените ведущего</b>\n\n"
+            text += "Готовы ли вы пригласить на свое мероприятие такого ведущего, как\n"
             if not participants:
                 text += "Участников пока нет\n"
             else:
                 for p in participants:
                     full_name = p.get('full_name', '???')
                     description = p.get('description', '').strip()
-                    text += f"<b>{full_name}</b>\n"
-                    if description:
-                        text += f"{description}\n"
-                    text += f"Голосов «Да»: {p['votes']}\n\n"
+                    text += f"<b>{full_name}</b> ?"
+                    # if description:
+                    #     text += f"{description}\n"
+                    # text += f"Голосов «Да»: {p['votes']}\n\n"
 
             for p in participants:
                 row = []
                 da_text = "Да"
                 user_vote = next((v for v in user_votes if v.get("participant_id") == p["id"]), None)
                 if user_vote and user_vote.get("choice") == "yes":
-                    da_text += " ✓"
+                    text += "\n\nВы уже проголосовали за данного ведущего"
+                    da_text += " ❤️"
                 row.append(InlineKeyboardButton(
                     text=da_text,
                     callback_data=f"vote_{fresh_data['round_id']}_{p['id']}_yes"
@@ -418,7 +421,8 @@ async def process_vote_callback(callback: CallbackQuery):
 
                 net_text = "Нет"
                 if user_vote and user_vote.get("choice") == "no":
-                    net_text += " ✓"
+                    text += "\n\nВы уже проголосовали против данного ведущего"
+                    net_text += " 💔"
                 row.append(InlineKeyboardButton(
                     text=net_text,
                     callback_data=f"vote_{fresh_data['round_id']}_{p['id']}_no"
@@ -430,15 +434,14 @@ async def process_vote_callback(callback: CallbackQuery):
             text += "Вы можете голосовать за нескольких (по 1 на каждого).\n"
             text += "Выберите участников (можно нескольких):\n"
             for p in participants:
-                btn_text = f"#{p['order_number']} {p.get('full_name', '?')} ({p['votes']} голосов)"
+                btn_text = f"#{p['order_number']} {p.get('full_name', '?')}" # ({p['votes']} голосов)
                 if p["id"] in voted_participant_ids:
-                    btn_text += " ✓"
+                    btn_text += " ❤️    "
                 kb.inline_keyboard.append([InlineKeyboardButton(
                     text=btn_text,
                     callback_data=f"vote_{fresh_data['round_id']}_{p['id']}"
                 )])
 
-        # Больше НЕ добавляем кнопку обновления — как ты просил
 
         # Редактируем сообщение
         await callback.message.edit_text(

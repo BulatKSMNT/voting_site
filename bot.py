@@ -263,7 +263,7 @@ async def cmd_show_participants(message: Message):
                     full_name = p.get('full_name', '???')
                     description = p.get('description', '').strip()
                     # Основное сообщение — имя и описание крупно
-                    text += f"<b>{full_name}</b> ?"
+                    text += f"<b>{full_name}</b>?"
                     # if description:
                     #     text += f"{description}\n"
                     #text += f"Голосов «Да»: {p['votes']}\n\n"
@@ -312,6 +312,7 @@ async def cmd_show_participants(message: Message):
                 if p["id"] in voted_participant_ids:
                     btn_text += " ❤️   "
                 kb.inline_keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"vote_{data['round_id']}_{p['id']}")])
+            #text = f"Сейчас не проходит голосование. \n\nПриходи, как только запустят!❤️️"
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Ошибка загрузки раунда: {e}")
@@ -402,7 +403,7 @@ async def process_vote_callback(callback: CallbackQuery):
                 for p in participants:
                     full_name = p.get('full_name', '???')
                     description = p.get('description', '').strip()
-                    text += f"<b>{full_name}</b> ?"
+                    text += f"<b>{full_name}</b>?"
                     # if description:
                     #     text += f"{description}\n"
                     # text += f"Голосов «Да»: {p['votes']}\n\n"

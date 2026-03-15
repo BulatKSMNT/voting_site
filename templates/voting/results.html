@@ -24,47 +24,10 @@
             scrollbar-width: none;
         }
 
-        ::-webkit-scrollbar {
-            display: none;
-            width: 0;
-            height: 0;
-        }
-        body::-webkit-scrollbar {
-            display: none;
-        }
+        ::-webkit-scrollbar { display: none; width: 0; height: 0; }
+        body::-webkit-scrollbar { display: none; }
 
-        .container {
-            max-width: 1400px;
-            padding: 1.5rem 1rem;
-        }
-
-        /* Верхняя навигация: кнопка домой + раунды */
-        .top-nav {
-            padding: 1.5rem 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1.5rem;
-        }
-
-        .back-btn {
-            display: inline-block;
-            padding: 0.9rem 2.2rem;
-            font-size: 1.25rem;
-            font-weight: bold;
-            background: linear-gradient(45deg, #ff0050, #c4003d);
-            border: none;
-            border-radius: 50px;
-            color: white;
-            text-decoration: none;
-            transition: all 0.3s;
-            box-shadow: 0 0 20px rgba(255,0,80,0.5);
-        }
-
-        .back-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 0 35px rgba(255,0,80,0.7);
-        }
+        .container { max-width: 1400px; padding: 1.5rem 1rem; }
 
         /* Основной контент */
         .main-content {
@@ -82,7 +45,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 1.5rem;           /* расстояние между элементами */
+            gap: 1.5rem;
             flex-wrap: wrap;
             padding: 1.5rem 0 2rem;
         }
@@ -164,13 +127,8 @@
             transition: background 0.2s;
         }
 
-        .snake-item:hover {
-            background: rgba(255,0,80,0.12);
-        }
-
-        .snake-item:nth-child(even) {
-            border-left: 1px solid #444;
-        }
+        .snake-item:hover { background: rgba(255,0,80,0.12); }
+        .snake-item:nth-child(even) { border-left: 1px solid #444; }
 
         .position {
             width: 70px;
@@ -226,11 +184,7 @@
             background: linear-gradient(45deg, #ff3370, #e60045);
         }
 
-        .rounds-section h3 {
-            color: #00ffc8;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
-        }
+        .rounds-section h3 { color: #00ffc8; margin-bottom: 1rem; font-size: 1.5rem; }
 
         .btn-custom {
             background: transparent;
@@ -256,74 +210,33 @@
         }
 
         @media (max-width: 992px) {
-            .results-grid, .individual-grid {
-                grid-template-columns: 1fr;
-            }
-            .snake-item:nth-child(even) {
-                border-left: none;
-            }
-            .logo-container, .qr-container {
-                position: static;
-                margin: 1rem auto;
-                width: 160px;
-                height: 160px;
-            }
-            .header h1 {
-                font-size: 2.4rem;
-            }
-            .header {
-                padding: 1.5rem 2rem;
-                max-width: 95%;
-            }
+            .results-grid, .individual-grid { grid-template-columns: 1fr; }
+            .snake-item:nth-child(even) { border-left: none; }
+            .logo-box, .qr-box { position: static; margin: 1rem auto; width: 160px; height: 160px; }
+            .header h1 { font-size: 2.4rem; }
+            .header { padding: 1.5rem 2rem; max-width: 95%; }
         }
     </style>
 </head>
 <body>
 
-<!-- Основной контент — занимает почти всю страницу -->
 <div class="main-content">
-
     <div class="header-wrapper">
-            <div class="logo-box">
-                <img src="{% static 'images/logo.png' %}" alt="Логотип">
-            </div>
-
-            <div class="header">
-                <h1>БИТВА ВЕДУЩИХ</h1>
-                {% if round %}
-
-                {% else %}
-                <div class="total text-warning">
-                    Активного раунда сейчас нет
-                </div>
-                {% endif %}
-            </div>
-
-            <div class="qr-box">
-                <img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота">
-            </div>
+        <div class="logo-box"><img src="{% static 'images/logo.png' %}" alt="Логотип"></div>
+        <div class="header">
+            <h1>БИТВА ВЕДУЩИХ</h1>
+            {% if not round %}
+            <div class="total text-warning">Активного раунда сейчас нет</div>
+            {% endif %}
         </div>
+        <div class="qr-box"><img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота"></div>
+    </div>
 
     {% if round %}
         {% if round.type == "individual" %}
             <div class="results-grid individual-grid">
-                <div class="column">
-                    {% for row in left_column %}
-                    <div class="snake-item">
-                        <span class="position">{{ row.position }}</span>
-                        <span class="name">{{ row.participant_full_name }}</span>
-
-                    </div>
-                    {% empty %}
-<!--                    <div class="snake-item text-center text-muted py-5">-->
-<!--                        Нет участников в этом раунде-->
-<!--                    </div>-->
-                    {% endfor %}
-                </div>
-            </div>
-        {% else %}
-            <div class="results-grid">
-                <div class="column">
+                <!-- ДОБАВЛЕН ID left-column -->
+                <div class="column" id="left-column">
                     {% for row in left_column %}
                     <div class="snake-item">
                         <span class="position">{{ row.position }}</span>
@@ -332,7 +245,21 @@
                     </div>
                     {% endfor %}
                 </div>
-                <div class="column">
+            </div>
+        {% else %}
+            <div class="results-grid">
+                <!-- ДОБАВЛЕН ID left-column -->
+                <div class="column" id="left-column">
+                    {% for row in left_column %}
+                    <div class="snake-item">
+                        <span class="position">{{ row.position }}</span>
+                        <span class="name">{{ row.participant_full_name }}</span>
+                        <span class="votes">{{ row.votes }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <!-- ДОБАВЛЕН ID right-column -->
+                <div class="column" id="right-column">
                     {% for row in right_column %}
                     <div class="snake-item">
                         <span class="position">{{ row.position }}</span>
@@ -344,24 +271,17 @@
             </div>
         {% endif %}
     {% endif %}
-
 </div>
 
-<!-- Нижний блок — кнопка домой + раунды -->
 <div class="bottom-controls">
-    <a href="{% url 'home' %}" class="back-btn">
-        <i class="bi bi-arrow-left-circle-fill"></i> Вернуться на главную
-    </a>
-
+    <a href="{% url 'home' %}" class="back-btn"><i class="bi bi-arrow-left-circle-fill"></i> Вернуться на главную</a>
     {% if active_rounds %}
     <div class="rounds-section">
         <h3>Активные раунды</h3>
         <div class="d-flex flex-wrap justify-content-center gap-3">
             {% for r in active_rounds %}
-            <a href="?round_id={{ r.id }}"
-               class="btn {% if r.id == selected_round_id %}btn-custom-active{% else %}btn-custom{% endif %}">
-                Раунд №{{ r.number }}
-                {% if r.type == "individual" %}(индивидуальный){% endif %}
+            <a href="?round_id={{ r.id }}" class="btn {% if r.id == selected_round_id %}btn-custom-active{% else %}btn-custom{% endif %}">
+                Раунд №{{ r.number }} {% if r.type == "individual" %}(индивид.){% endif %}
                 {% if r.id == selected_round_id %}<span class="ms-1">★</span>{% endif %}
             </a>
             {% endfor %}
@@ -370,11 +290,50 @@
     {% endif %}
 </div>
 
+<!-- УМНЫЙ AJAX-СКРИПТ -->
 <script>
-    setInterval(function() {
-        location.reload();
-    }, 1000);
+    // Узнаем, какой раунд сейчас открыт (из URL)
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('ajax', '1'); // Говорим серверу отдавать JSON
+    const ajaxUrl = window.location.pathname + '?' + urlParams.toString();
+
+    // Функция сборки куска HTML для одного участника
+    const buildRowHTML = (row) => `
+        <div class="snake-item">
+            <span class="position">${row.position}</span>
+            <span class="name">${row.participant_full_name}</span>
+            <span class="votes">${row.votes}</span>
+        </div>
+    `;
+
+    async function fetchLiveUpdates() {
+        try {
+            const response = await fetch(ajaxUrl);
+            if (!response.ok) return;
+
+            const data = await response.json();
+
+            // Обновляем левую колонку
+            const leftCol = document.getElementById('left-column');
+            if (leftCol && data.left_column) {
+                leftCol.innerHTML = data.left_column.map(buildRowHTML).join('');
+            }
+
+            // Обновляем правую колонку (если есть)
+            const rightCol = document.getElementById('right-column');
+            if (rightCol && data.right_column) {
+                rightCol.innerHTML = data.right_column.map(buildRowHTML).join('');
+            }
+
+        } catch (error) {
+            console.error("Ошибка Live-обновления:", error);
+        }
+    }
+
+    // Запускаем тихий опрос сервера каждые 2 секунды (2000 мс)
+    setInterval(fetchLiveUpdates, 2000);
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -25,6 +25,16 @@ SECRET_KEY = 'django-insecure-j*thpt0+k*6+)0d1wqn*80u+h2n_6thzcd9w*xryq2dn(g1q80
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+import logging
+
+class SkipAjaxFilter(logging.Filter):
+    def filter(self, record):
+        # Игнорируем сообщение, ТОЛЬКО ЕСЛИ это обычный INFO-лог и в нем есть 'ajax=1'
+        if record.levelno == logging.INFO and 'ajax=1' in record.getMessage():
+            return False
+        return True
+
+
 ALLOWED_HOSTS = ['*'] #После мероприятия верни обратно: ['127.0.0.1', 'localhost']
 
 # Application definition
@@ -132,23 +142,49 @@ REST_FRAMEWORK = {
     ]
 }
 
+# Логирование Django
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'skip_ajax': {
+            '()': 'core.settings.SkipAjaxFilter',  # Подключаем наш фильтр
+        }
+    },
     'handlers': {
+        'file': {
+            'level': 'INFO',
+            'filters': ['skip_ajax'],  # <--- Применили фильтр
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs/django.log',
+            'maxBytes': 1024 * 1024 * 5,  # 5 MB
+            'backupCount': 3,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
         'console': {
+            'level': 'INFO',
+            'filters': ['skip_ajax'],  # <--- Применили фильтр
             'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
         },
     },
     'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'ERROR',
-            'propagate': True,
+        'django.server': {  # Это логгер сервера разработки (runserver)
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
         },
-        '': {  # root logger
-            'handlers': ['console'],
-            'level': 'ERROR',
+        'django.request': { # Это логгер для продакшена (ошибки 500 и т.д.)
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
         },
     },
 }

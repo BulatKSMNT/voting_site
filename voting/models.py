@@ -48,6 +48,8 @@ class Round(models.Model):
             if not self.number:
                 max_num = Round.objects.filter(campaign=self.campaign).aggregate(m=Max('number'))['m'] or 0
                 self.number = max_num + 1
+            if self.pk is None:
+                self.is_current = False
 
             if self.is_current:
                 Round.objects.filter(is_current=True).exclude(pk=self.pk).update(is_current=False)

@@ -22,7 +22,17 @@ async def on_shutdown():
 
 
 async def request(method: str, endpoint: str, data: dict = None, is_admin: bool = False) -> Union[dict, list]:
-    url = f"{DJANGO_API_BASE}/{endpoint}/"
+    # Убираем случайные слэши по краям, чтобы избежать "//"
+    endpoint = endpoint.strip('/')
+
+    # Умная склейка адреса
+    if "?" in endpoint:
+        path, query = endpoint.split("?", 1)
+        path = path.rstrip('/')  # Убираем слэш перед вопросом, если он там был
+        url = f"{DJANGO_API_BASE}/{path}/?{query}"
+    else:
+        url = f"{DJANGO_API_BASE}/{endpoint}/"
+
     headers = {"Content-Type": "application/json"}
     if is_admin:
         headers["Authorization"] = f"Token {DJANGO_API_TOKEN}"
@@ -35,6 +45,10 @@ async def request(method: str, endpoint: str, data: dict = None, is_admin: bool 
                             error_data.get("non_field_errors", [str(error_data)])[0]
             except Exception:
                 error_msg = await resp.text()
+                # ЗАЩИТА ОТ ПАДЕНИЯ ТЕЛЕГРАМА: Если Django вернул огромную HTML-страницу
+                if "<html" in error_msg.lower() or "<body" in error_msg.lower():
+                    error_msg = f"Ошибка сервера {resp.status}. Проверьте терминал Django."
+
             raise Exception(error_msg)
 
         if resp.status == 204:

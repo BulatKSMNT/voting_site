@@ -21,5 +21,5 @@ from core.views import home
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name='home'),
-    path("api/", include("voting.urls")),
+    path("voting/", include("voting.urls")),
 ]

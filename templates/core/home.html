@@ -155,8 +155,10 @@
                                         <td>
                                             {% if r.status == 'active' %}
                                                 <span class="badge bg-success">Активен</span>
+                                            {% elif r.status == 'published' %}
+                                                <span class="badge bg-info">Опубликован</span>
                                             {% elif r.status == 'ended' %}
-                                                <span class="badge bg-secondary">Завершён</span>
+                                                <span class="badge bg-secondary">Завершён (Скрыт)</span>
                                             {% else %}
                                                 <span class="badge bg-warning">Ожидание</span>
                                             {% endif %}

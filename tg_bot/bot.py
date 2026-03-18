@@ -245,6 +245,7 @@ async def cmd_set_current(msg: Message):
 
 @dp.callback_query(F.data.startswith("setc_"))
 async def process_set_current(call: CallbackQuery):
+    await call.answer()
     try:
         await api.request("PATCH", f"rounds/{call.data.split('_')[1]}", {"is_current": True}, is_admin=True)
         await call.message.edit_text("✅ Раунд выставлен на голосование! Зрители могут голосовать.")
@@ -252,7 +253,7 @@ async def process_set_current(call: CallbackQuery):
         await call.message.edit_text(f"Ошибка: {e}")
 
 
-@dp.message(Command("end_current_round"))
+
 @dp.message(Command("end_current_round"))
 async def cmd_end_current(msg: Message, state: FSMContext):
     if not is_any_admin(msg.from_user.id):
@@ -263,7 +264,6 @@ async def cmd_end_current(msg: Message, state: FSMContext):
         round_id = data.get("round_id")
         round_type = data.get("round_type")
 
-        # Получаем все раунды, чтобы узнать campaign_id текущего
         rounds = await api.request("GET", "rounds", is_admin=True)
         source_round_obj = next((r for r in rounds if r["id"] == round_id), None)
 
@@ -273,9 +273,9 @@ async def cmd_end_current(msg: Message, state: FSMContext):
 
         campaign_id = source_round_obj["campaign"]
 
-        # ==========================================
+        # =========================
         # ИНДИВИДУАЛЬНЫЙ РАУНД
-        # ==========================================
+        # =========================
         if round_type == "individual":
             active_standards = [
                 r for r in rounds
@@ -307,7 +307,8 @@ async def cmd_end_current(msg: Message, state: FSMContext):
                 await msg.answer(text, parse_mode="HTML")
                 return
 
-            # Если активных стандартных раундов больше одного — даем выбрать
+            # Если больше одного — даем выбрать
+            await state.clear()
             await state.update_data(
                 source_round=round_id,
                 source_type="individual",
@@ -326,154 +327,204 @@ async def cmd_end_current(msg: Message, state: FSMContext):
                 InlineKeyboardButton(text="Создать новый стандартный раунд", callback_data="trans_new")
             ])
 
+            await state.set_state(TransferStandardStates.choose_target)
             await msg.answer(
                 "Куда перенести участника из индивидуального раунда?",
                 reply_markup=kb
             )
-            await state.set_state(TransferStandardStates.choose_target)
             return
 
-        # ==========================================
+        # =========================
         # СТАНДАРТНЫЙ РАУНД
-        # ==========================================
-        else:
-            res = await api.request(
-                "POST",
-                f"rounds/{round_id}/end_and_transfer",
-                {"action_type": "end_standard"},
-                is_admin=True
-            )
-            winners = res.get("winners", [])
+        # =========================
+        res = await api.request(
+            "POST",
+            f"rounds/{round_id}/end_and_transfer",
+            {"action_type": "end_standard"},
+            is_admin=True
+        )
+        winners = res.get("winners", [])
 
-            text = f"🏁 {res.get('message')}\n\n<b>Победители:</b>\n"
-            for w in winners:
-                text += f"🏆 {w['name']} — {w['votes']} голосов\n"
+        text = f"🏁 {res.get('message')}\n\n<b>Победители:</b>\n"
+        for w in winners:
+            text += f"🏆 {w['name']} — {w['votes']} голосов\n"
 
-            await state.update_data(
-                source_round=round_id,
-                winners_ids=[w['id'] for w in winners],
-                source_type="standard",
-                campaign_id=campaign_id
-            )
+        # Обновляем state
+        await state.clear()
+        await state.update_data(
+            source_round=round_id,
+            winners_ids=[w['id'] for w in winners],
+            source_type="standard",
+            campaign_id=campaign_id
+        )
 
-            active_standards = [
-                r for r in rounds
-                if r["status"] == "active"
-                and r["type"] == "standard"
-                and r["campaign"] == campaign_id
-            ]
+        # Получаем актуальный список раундов уже ПОСЛЕ завершения
+        rounds_after = await api.request("GET", "rounds", is_admin=True)
+        active_standards = [
+            r for r in rounds_after
+            if r["status"] == "active"
+            and r["type"] == "standard"
+            and r["campaign"] == campaign_id
+            and r["id"] != round_id
+        ]
 
-            kb = InlineKeyboardMarkup(inline_keyboard=[])
-            for r in active_standards:
-                kb.inline_keyboard.append([
-                    InlineKeyboardButton(
-                        text=f"В раунд #{r['number']} (Камп. {r['campaign_order_number']})",
-                        callback_data=f"trans_{r['id']}"
-                    )
-                ])
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+        for r in active_standards:
             kb.inline_keyboard.append([
-                InlineKeyboardButton(text="Создать новый стандартный раунд", callback_data="trans_new")
+                InlineKeyboardButton(
+                    text=f"В раунд #{r['number']} (Камп. {r['campaign_order_number']})",
+                    callback_data=f"trans_{r['id']}"
+                )
             ])
-            kb.inline_keyboard.append([
-                InlineKeyboardButton(text="Не переносить (Завершить)", callback_data="trans_none")
-            ])
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text="Создать новый стандартный раунд", callback_data="trans_new")
+        ])
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text="Не переносить (Завершить)", callback_data="trans_none")
+        ])
 
-            await msg.answer(text + "\nКуда перенести этих участников?", reply_markup=kb, parse_mode="HTML")
-            await state.set_state(TransferStandardStates.choose_target)
+        await state.set_state(TransferStandardStates.choose_target)
+        await msg.answer(text + "\nКуда перенести этих участников?", reply_markup=kb, parse_mode="HTML")
 
     except Exception as e:
+        logging.exception("cmd_end_current failed")
         await msg.answer(f"Ошибка при завершении: {e}")
 
 
 
-dp.callback_query(F.data.startswith("trans_"), TransferStandardStates.choose_target)
+@dp.callback_query(F.data.startswith("trans_"), TransferStandardStates.choose_target)
 async def process_transfer_target(call: CallbackQuery, state: FSMContext):
-    target = call.data.split("_")[1]
-    data = await state.get_data()
-    source_type = data.get("source_type", "standard")
+    await call.answer()
 
-    if target == "none":
-        await call.message.edit_text("✅ Раунд завершен. Перенос не выполнен.")
-        await state.clear()
-        return
+    try:
+        target = call.data.split("_", 1)[1]
+        data = await state.get_data()
 
-    if target == "new":
-        try:
-            rd = await api.request(
-                "POST",
-                "rounds",
-                {
-                    "campaign": data["campaign_id"],
-                    "type": "standard",
-                    "winners_count": 3,
-                    "status": "active"
-                },
-                is_admin=True
-            )
-            target = rd["id"]
-        except Exception as e:
-            await call.message.edit_text(f"Ошибка создания раунда: {e}")
+        source_round = data.get("source_round")
+        source_type = data.get("source_type", "standard")
+        campaign_id = data.get("campaign_id")
+
+        if not source_round:
+            await call.message.edit_text("Ошибка: потеряно состояние. Повторите команду завершения раунда.")
+            await state.clear()
             return
 
-    # ==========================================
-    # ЕСЛИ ИСТОЧНИК — ИНДИВИДУАЛЬНЫЙ РАУНД
-    # ==========================================
-    if source_type == "individual":
-        try:
-            res = await api.request(
-                "POST",
-                f"rounds/{data['source_round']}/end_and_transfer",
-                {
-                    "action_type": "auto_individual",
-                    "target_round_id": target
-                },
-                is_admin=True
-            )
+        if target == "none":
+            await call.message.edit_text("✅ Раунд завершен. Перенос не выполнен.")
+            await state.clear()
+            return
 
-            text = f"{res.get('message', 'Перенос завершен!')}\n\n"
-            winners = res.get("winners", [])
-            if winners:
-                text += "<b>Результат:</b>\n"
-                for w in winners:
-                    text += f"🏆 {w['name']} — {w['votes']} голосов\n"
+        if target == "new":
+            if not campaign_id:
+                await call.message.edit_text("Ошибка: не найдена кампания для создания нового раунда.")
+                await state.clear()
+                return
 
-            await call.message.edit_text(text, parse_mode="HTML")
-        except Exception as e:
-            await call.message.edit_text(f"Ошибка: {e}")
+            try:
+                rd = await api.request(
+                    "POST",
+                    "rounds",
+                    {
+                        "campaign": campaign_id,
+                        "type": "standard",
+                        "winners_count": 3,
+                        "status": "active"
+                    },
+                    is_admin=True
+                )
+                target = rd["id"]
+            except Exception as e:
+                await call.message.edit_text(f"Ошибка создания раунда: {e}")
+                return
 
+        # =========================
+        # ИСТОЧНИК — ИНДИВИДУАЛЬНЫЙ
+        # =========================
+        if source_type == "individual":
+            try:
+                res = await api.request(
+                    "POST",
+                    f"rounds/{source_round}/end_and_transfer",
+                    {
+                        "action_type": "auto_individual",
+                        "target_round_id": target
+                    },
+                    is_admin=True
+                )
+
+                text = f"{res.get('message', 'Перенос завершен!')}\n\n"
+                winners = res.get("winners", [])
+                if winners:
+                    text += "<b>Результат:</b>\n"
+                    for w in winners:
+                        text += f"🏆 {w['name']} — {w['votes']} голосов\n"
+
+                await call.message.edit_text(text, parse_mode="HTML")
+            except Exception as e:
+                logging.exception("individual transfer failed")
+                await call.message.edit_text(f"Ошибка: {e}")
+
+            await state.clear()
+            return
+
+        # =========================
+        # ИСТОЧНИК — СТАНДАРТНЫЙ
+        # =========================
+        await state.update_data(target_round=target)
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Сохранить голоса", callback_data="keep_yes")],
+            [InlineKeyboardButton(text="Начать с 0", callback_data="keep_no")]
+        ])
+        await call.message.edit_text(
+            "Сохранить накопленные голоса у переносимых участников?",
+            reply_markup=kb
+        )
+        await state.set_state(TransferStandardStates.choose_keep_votes)
+
+    except Exception as e:
+        logging.exception("process_transfer_target failed")
+        await call.message.edit_text(f"Ошибка: {e}")
         await state.clear()
-        return
 
-    # ==========================================
-    # ЕСЛИ ИСТОЧНИК — СТАНДАРТНЫЙ РАУНД
-    # ==========================================
-    await state.update_data(target_round=target)
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Сохранить голоса", callback_data="keep_yes")],
-        [InlineKeyboardButton(text="Начать с 0", callback_data="keep_no")]
-    ])
-    await call.message.edit_text("Сохранить накопленные голоса у переносимых участников?", reply_markup=kb)
-    await state.set_state(TransferStandardStates.choose_keep_votes)
 
 
 @dp.callback_query(F.data.startswith("keep_"), TransferStandardStates.choose_keep_votes)
 async def process_transfer_keep(call: CallbackQuery, state: FSMContext):
-    keep_votes = (call.data == "keep_yes")
-    data = await state.get_data()
-
-    payload = {
-        "action_type": "transfer_standard",
-        "target_round_id": data["target_round"],
-        "winners_ids": data["winners_ids"],
-        "keep_votes": keep_votes
-    }
+    await call.answer()
 
     try:
-        res = await api.request("POST", f"rounds/{data['source_round']}/end_and_transfer", payload, is_admin=True)
+        keep_votes = (call.data == "keep_yes")
+        data = await state.get_data()
+
+        source_round = data.get("source_round")
+        target_round = data.get("target_round")
+        winners_ids = data.get("winners_ids", [])
+
+        if not source_round or not target_round:
+            await call.message.edit_text("Ошибка: потеряно состояние переноса. Повторите команду.")
+            await state.clear()
+            return
+
+        payload = {
+            "action_type": "transfer_standard",
+            "target_round_id": target_round,
+            "winners_ids": winners_ids,
+            "keep_votes": keep_votes
+        }
+
+        res = await api.request(
+            "POST",
+            f"rounds/{source_round}/end_and_transfer",
+            payload,
+            is_admin=True
+        )
         await call.message.edit_text(res.get("message", "Перенос завершен!"))
+
     except Exception as e:
+        logging.exception("process_transfer_keep failed")
         await call.message.edit_text(f"Ошибка: {e}")
+
     await state.clear()
 
 
@@ -515,6 +566,7 @@ async def cmd_start_round(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("sr_c_"), StartRoundStates.choose_campaign)
 async def process_sr_camp(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     await state.update_data(campaign_id=call.data.split("_")[2])
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Стандартный", callback_data="sr_type_standard")],
@@ -526,6 +578,7 @@ async def process_sr_camp(call: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("sr_type_"), StartRoundStates.choose_type)
 async def process_sr_type(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     round_type = call.data.split("_")[2]
     await state.update_data(type=round_type)
 
@@ -585,11 +638,12 @@ async def cmd_add_participant(message: Message, state: FSMContext):
         await message.answer("В какой раунд добавляем?", reply_markup=kb)
         await state.set_state(AddParticipantStates.choose_round)
     except Exception:
-        pass
+        await message.answer(f"Ошибка: {e}")
 
 
 @dp.callback_query(F.data.startswith("addp_"), AddParticipantStates.choose_round)
 async def process_addp_round(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
     await state.update_data(round_id=callback.data.split("_")[1])
     await callback.message.edit_text(
         "Отправляй ФИО по одному или <b>списком (каждый с новой строки)</b>.\nДля завершения напиши 'стоп'.",
@@ -656,6 +710,7 @@ async def cmd_hide_round(msg: Message):
 
 @dp.callback_query(F.data.startswith("hide_"))
 async def process_hide_round(call: CallbackQuery):
+    await call.answer()
     round_id = call.data.split('_')[1]
     try:
         # Магия Django REST: отправляем PATCH-запрос, меняя только статус и убирая с экрана

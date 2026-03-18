@@ -219,7 +219,10 @@ class RoundViewSet(viewsets.ModelViewSet):
 
                 elif action_type == "transfer_standard":
                     target_round = Round.objects.get(id=target_round_id, type="standard", status="active")
-
+                    if target_round.id == round_obj.id:
+                        return Response(
+                            {"error": "Нельзя переносить участников в тот же самый раунд."},
+                            status=400)
                     if target_round.campaign_id != round_obj.campaign_id:
                         return Response(
                             {"error": "Нельзя переносить участников в раунд другой кампании."},

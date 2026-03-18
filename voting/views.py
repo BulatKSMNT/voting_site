@@ -244,17 +244,21 @@ class ParticipantViewSet(viewsets.ModelViewSet):
 class CurrentRoundResults(View):  # <-- Унаследовали от обычного View, а не от APIView
     def get(self, request):
         round_id_str = request.GET.get("round_id")
+        current_round = None
 
-        # Если в URL явно указан раунд - берем строго его
+        # 1. ЗАЩИТА: Если в URL указан раунд, берем его ТОЛЬКО если он не скрыт
         if round_id_str:
-            current_round = Round.objects.filter(id=int(round_id_str)).first()
-        else:
-            # Иначе берем тот, который сейчас на экранах (is_current=True)
+            try:
+                current_round = Round.objects.filter(
+                    id=int(round_id_str),
+                    status__in=["active", "published"]  # <-- СТРОГАЯ ПРОВЕРКА СТАТУСА
+                ).first()
+            except ValueError:
+                pass  # Защита, если кто-то руками введет ?round_id=абвгд
+
+        # 2. Если по ссылке ничего не найдено (или раунд завершен), показываем текущий экран
+        if not current_round:
             current_round = Round.objects.filter(is_current=True).first()
-            # Если такого нет, берем последний активный/опубликованный
-            # if not current_round:
-            #     current_round = Round.objects.filter(status__in=["active", "published"]).order_by(
-            #         "-started_at").first()
 
         # Список всех раундов для кнопок внизу
         active_rounds = Round.objects.filter(status__in=["active", "published"]).order_by("started_at")

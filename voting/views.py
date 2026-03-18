@@ -138,22 +138,35 @@ class RoundViewSet(viewsets.ModelViewSet):
                             "message": "Индив. раунд завершен (участников не было)."
                         })
 
-                    target_round = Round.objects.filter(
-                        campaign=round_obj.campaign,
-                        type="standard",
-                        status="active"
-                    ).first()
-
-                    if not target_round:
-                        max_num = Round.objects.filter(campaign=round_obj.campaign).aggregate(m=Max('number'))['m'] or 0
-                        target_round = Round.objects.create(
+                    # Если бот явно передал, куда переносить
+                    if target_round_id:
+                        target_round = Round.objects.get(
+                            id=target_round_id,
                             campaign=round_obj.campaign,
-                            number=max_num + 1,
                             type="standard",
-                            status="active",
-                            winners_count=3
+                            status="active"
                         )
+                    else:
+                        # Старое поведение: берем первый активный стандартный раунд этой кампании
+                        target_round = Round.objects.filter(
+                            campaign=round_obj.campaign,
+                            type="standard",
+                            status="active"
+                        ).first()
 
+                        # Если его нет — создаем новый
+                        if not target_round:
+                            max_num = Round.objects.filter(campaign=round_obj.campaign).aggregate(m=Max('number'))[
+                                          'm'] or 0
+                            target_round = Round.objects.create(
+                                campaign=round_obj.campaign,
+                                number=max_num + 1,
+                                type="standard",
+                                status="active",
+                                winners_count=3
+                            )
+
+                    # Переносим и сохраняем голоса ЗА
                     yes_votes = Vote.objects.filter(participant=p, choice="yes")
                     new_p = Participant.objects.create(
                         round=target_round,
@@ -168,12 +181,20 @@ class RoundViewSet(viewsets.ModelViewSet):
 
                     return Response({
                         "is_individual": True,
+                        "winners": [
+                            {
+                                "id": p.id,
+                                "name": p.full_name,
+                                "votes": yes_votes.count()
+                            }
+                        ],
                         "message": (
                             f"🏁 Раунд завершен!\n"
                             f"Участник <b>{p.full_name}</b> "
                             f"({yes_votes.count()} голосов «ЗА») перенесен в Стандартный Раунд #{target_round.number}."
                         )
                     })
+
 
                 elif action_type == "end_standard":
                     round_obj.status = "published"

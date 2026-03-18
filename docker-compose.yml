@@ -1,21 +1,37 @@
-# Используем официальный легкий образ Python
-FROM python:3.12-slim
+version: '3.8'
 
-# Устанавливаем рабочую папку
-WORKDIR /app
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
-# Системные настройки Python
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+  web:
+    build: .
+    restart: always
+    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    env_file:
+      - .env
+    ports:
+      - "80:8000"
+    depends_on:
+      - db
 
-# Устанавливаем зависимости
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+  bot:
+    build: .
+    restart: always
+    command: python tg_bot/bot.py
+    env_file:
+      - .env
+    depends_on:
+      - web
 
-# Копируем весь проект
-COPY . .
-
-#for logs
-RUN mkdir -p logs
-# Собираем статику (картинки, стили)
-RUN python manage.py collectstatic --noinput
+volumes:
+  postgres_data:

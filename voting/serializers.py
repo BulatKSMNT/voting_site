@@ -13,13 +13,14 @@ class VoteCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vote
         fields = ["round", "participant", "user_telegram_id", "choice"]
+        validators = []  # отключаем стандартный unique_together validator DRF
 
     def validate(self, data):
         round_obj = data["round"]
         participant = data["participant"]
+        user_telegram_id = data["user_telegram_id"]
         choice = data.get("choice")
 
-        # Нормализуем пустую строку
         if choice == "":
             data["choice"] = None
             choice = None
@@ -34,9 +35,16 @@ class VoteCreateSerializer(serializers.ModelSerializer):
             if choice not in ("yes", "no"):
                 raise serializers.ValidationError("Для индивидуального раунда нужно передать choice=yes или choice=no.")
         else:
-            # В стандартном раунде бот не передает choice, это считается голосом "за"
             if choice not in (None, "yes"):
-                raise serializers.ValidationError("Для стандартного раунда допустим только голос 'за'.")
+                raise serializers.ValidationError("Для стандартного раунда допустим только голос «за».")
+
+        # Своя понятная проверка дубликата
+        if Vote.objects.filter(
+            round=round_obj,
+            participant=participant,
+            user_telegram_id=user_telegram_id
+        ).exists():
+            raise serializers.ValidationError("Вы уже проголосовали за этого участника.")
 
         return data
 

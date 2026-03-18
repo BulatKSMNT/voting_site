@@ -125,11 +125,6 @@ credentials.json
 *.key
 *.pem
 
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
-docker-compose.*.yml
 
 # Локальные настройки
 local_settings.py

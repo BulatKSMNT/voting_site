@@ -228,7 +228,7 @@ async def cmd_set_current(msg: Message):
         rounds = await api.request("GET", "rounds", is_admin=True)
         active = [r for r in rounds if r["status"] == "active"]
         if not active:
-            await msg.answer("Нет активных раундов.")
+            await msg.answer("Нет раундов, открытых для голосования. \nСначала используйте команду /set_current_round")
             return
 
         kb = InlineKeyboardMarkup(inline_keyboard=[])

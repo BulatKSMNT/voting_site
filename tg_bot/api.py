@@ -5,7 +5,7 @@ from decouple import config
 
 DJANGO_API_TOKEN = config("DJANGO_API_TOKEN")
 # УЧЛИ ПРАВИЛЬНЫЙ АДРЕС С voting/
-DJANGO_API_BASE = "http://127.0.0.1:8000/voting/api"
+DJANGO_API_BASE = config("DJANGO_API_BASE", default="http://127.0.0.1:8000/voting/api")
 
 session: aiohttp.ClientSession = None
 

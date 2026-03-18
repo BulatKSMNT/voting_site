@@ -11,6 +11,8 @@ from django.utils import timezone
 from .models import Round, Participant, Vote, Campaign
 from .serializers import ParticipantSerializer, VoteCreateSerializer, CampaignSerializer, RoundSerializer
 from django.http import JsonResponse
+import csv
+import io
 
 
 class CampaignViewSet(viewsets.ModelViewSet):
@@ -165,6 +167,36 @@ class RoundViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def export_csv(self, request):
+        """Собирает результаты всех кампаний и раундов в CSV формат"""
+        output = io.StringIO()
+        # Используем разделитель ';' — так русский Microsoft Excel сразу разбивает всё по колонкам
+        writer = csv.writer(output, delimiter=';', dialect='excel')
+
+        # Заголовки столбцов
+        writer.writerow(['Кампания', 'Раунд', 'Тип', 'Статус', 'Место', 'Участник', 'Голоса ЗА'])
+
+        # Получаем все раунды, сортируем по кампании и номеру
+        rounds = Round.objects.all().select_related('campaign').order_by('campaign__order_number', 'number')
+
+        for r in rounds:
+            participants = Participant.objects.filter(round=r).annotate(
+                votes=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
+            ).order_by("-votes")
+
+            if not participants.exists():
+                writer.writerow([r.campaign.name, f"№{r.number}", r.get_type_display(), r.get_status_display(), '-',
+                                 'Нет участников', 0])
+                continue
+
+            for i, p in enumerate(participants, 1):
+                writer.writerow(
+                    [r.campaign.name, f"№{r.number}", r.get_type_display(), r.get_status_display(), i, p.full_name,
+                     p.votes])
+
+        return Response({"csv_content": output.getvalue()})
 
 
 class VoteViewSet(viewsets.ModelViewSet):

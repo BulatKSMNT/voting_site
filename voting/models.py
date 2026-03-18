@@ -19,6 +19,9 @@ class Campaign(models.Model):
             self.order_number = max_num + 1
         super().save(*args, **kwargs)
 
+    def __str__(self):
+        return f"Кампания #{self.order_number}: {self.name}"
+
 
 class Round(models.Model):
     ROUND_TYPES = [("standard", "Стандартный"), ("individual", "Индивидуальный")]
@@ -26,7 +29,7 @@ class Round(models.Model):
         ("pending", "Ожидание"),
         ("active", "Активен"),
         ("ended", "Завершён (Скрыт)"),
-        ("published", "Опубликован (Результаты открыты)")  # НОВЫЙ СТАТУС
+        ("published", "Опубликован (Результаты открыты)")
     ]
 
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="rounds")
@@ -55,6 +58,8 @@ class Round(models.Model):
                 Round.objects.filter(is_current=True).exclude(pk=self.pk).update(is_current=False)
             super().save(*args, **kwargs)
 
+    def __str__(self):
+        return f"Раунд №{self.number} ({self.campaign.name})"
 
 class Participant(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="participants")
@@ -71,6 +76,8 @@ class Participant(models.Model):
             self.order_number = max_num + 1
         super().save(*args, **kwargs)
 
+    def __str__(self):
+        return self.full_name
 
 class Vote(models.Model):
     VOTE_CHOICES = [("yes", "Да"), ("no", "Нет")]
@@ -83,3 +90,6 @@ class Vote(models.Model):
     class Meta:
         unique_together = ["round", "user_telegram_id", "participant"]
         indexes = [models.Index(fields=['round', 'user_telegram_id'])]
+
+    def __str__(self):
+        return f"Голос от {self.user_telegram_id} за {self.participant.full_name}"

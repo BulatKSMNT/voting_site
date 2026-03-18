@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, \
     KeyboardButton
+from aiogram.types.input_file import BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -12,6 +13,7 @@ from decouple import config
 
 import api
 import lexicon
+from middlewares import AntiFloodMiddleware
 
 BOT_TOKEN = config("TELEGRAM_TOKEN")
 
@@ -44,6 +46,9 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+dp.message.middleware(AntiFloodMiddleware(limit_seconds=1.0))
+dp.callback_query.middleware(AntiFloodMiddleware(limit_seconds=1.0))
 
 dp.startup.register(api.on_startup)
 dp.shutdown.register(api.on_shutdown)
@@ -158,6 +163,7 @@ async def cmd_help(message: Message):
             "\n🛠 <b>Для модераторов:</b>\n"
             "▪️ /set_current_round — Выбрать раунд для показа на главном экране\n"
             "▪️ /end_current_round — Завершить текущий раунд и перенести победителей\n"
+            "▪️ /hide_round — Скрыть раунд с сайта\n"
         )
     if is_full_admin(user_id):
         text += (
@@ -165,6 +171,7 @@ async def cmd_help(message: Message):
             "▪️ /create_campaign — Создать новую кампанию\n"
             "▪️ /start_round — Запустить раунд (настроить тип и места)\n"
             "▪️ /add_participant — Вписать участников (можно списком!)\n"
+            "▪️ /export — 📊 Скачать Excel-отчет с результатами\n"
         )
     await message.answer(text, parse_mode="HTML")
 
@@ -487,6 +494,70 @@ async def process_add_participant_name(message: Message, state: FSMContext):
 
     result_msg += "Присылай еще или напиши «стоп»."
     await message.answer(result_msg, parse_mode="HTML")
+
+
+@dp.message(Command("hide_round"))
+async def cmd_hide_round(msg: Message):
+    if not is_any_admin(msg.from_user.id): return
+    try:
+        # Запрашиваем все раунды
+        rounds = await api.request("GET", "rounds", is_admin=True)
+        # Ищем только те, которые сейчас висят как "Опубликованные"
+        published = [r for r in rounds if r["status"] == "published"]
+
+        if not published:
+            await msg.answer("Нет опубликованных раундов, которые можно скрыть.")
+            return
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+        for r in published:
+            mark = " (На экране)" if r.get("is_current") else ""
+            btn_text = f"Р#{r['number']} (Камп. {r['campaign_order_number']}){mark}"
+            kb.inline_keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"hide_{r['id']}")])
+
+        await msg.answer("Какой раунд убрать с экранов в архив?", reply_markup=kb)
+    except Exception as e:
+        await msg.answer(f"Ошибка: {e}")
+
+
+@dp.callback_query(F.data.startswith("hide_"))
+async def process_hide_round(call: CallbackQuery):
+    round_id = call.data.split('_')[1]
+    try:
+        # Магия Django REST: отправляем PATCH-запрос, меняя только статус и убирая с экрана
+        payload = {
+            "status": "ended",
+            "is_current": False
+        }
+        await api.request("PATCH", f"rounds/{round_id}", payload, is_admin=True)
+        await call.message.edit_text("✅ Раунд переведен в статус «Завершен» и убран с экранов!")
+    except Exception as e:
+        await call.message.edit_text(f"Ошибка: {e}")
+
+
+@dp.message(Command("export"))
+async def cmd_export(msg: Message):
+    if not is_full_admin(msg.from_user.id): return
+
+    wait_msg = await msg.answer("⏳ Собираю данные из базы, формирую Excel-файл...")
+
+    try:
+        data = await api.request("GET", "rounds/export_csv", is_admin=True)
+        csv_content = data.get("csv_content", "")
+
+        # Кодировка utf-8-sig (с BOM) гарантирует, что русский Excel откроет файл
+        # с правильными русскими буквами без иероглифов!
+        file_bytes = csv_content.encode('utf-8-sig')
+
+        # Создаем виртуальный файл в оперативной памяти бота
+        document = BufferedInputFile(file_bytes, filename="Отчет_Битва_Ведущих.csv")
+
+        await msg.answer_document(document, caption="📊 Полный отчет по всем кампаниям и раундам.")
+        await wait_msg.delete()
+
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка при выгрузке отчета: {e}")
+        await wait_msg.delete()
 
 
 async def main():

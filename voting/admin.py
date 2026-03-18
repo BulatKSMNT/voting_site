@@ -26,6 +26,17 @@ class ParticipantAdmin(admin.ModelAdmin):
 
 @admin.register(Vote)
 class VoteAdmin(admin.ModelAdmin):
-    list_display = ("user_telegram_id", "participant", "round", "created_at")
-    list_filter = ("round",)
-    search_fields = ("user_telegram_id",)
+    # Используем наши новые функции вместо стандартных полей
+    list_display = ("user_telegram_id", "get_participant_name", "get_round_info", "choice", "created_at")
+    list_filter = ("round__campaign", "round") # Удобный фильтр сбоку
+    search_fields = ("user_telegram_id", "participant__full_name")
+
+    @admin.display(description='Участник')
+    def get_participant_name(self, obj):
+        # Выводим ФИО участника
+        return obj.participant.full_name
+
+    @admin.display(description='Раунд')
+    def get_round_info(self, obj):
+        # Выводим номер раунда и название кампании
+        return f"Раунд №{obj.round.number} ({obj.round.campaign.name})"

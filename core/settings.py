@@ -14,7 +14,8 @@ def env_list(name, default=""):
 
 
 SECRET_KEY = config('SECRET_KEY')
-DEBUG = False
+
+DEBUG = config("DEBUG", cast=bool, default=False)
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", default="127.0.0.1,localhost")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", default="")
@@ -126,9 +127,9 @@ USE_TZ = True
 
 
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "static",
-]
+# STATICFILES_DIRS = [
+#     BASE_DIR / "static",
+# ]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 

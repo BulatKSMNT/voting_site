@@ -10,29 +10,27 @@
 
     <style>
         :root {
-            --bg-black: #050505;
-            --bg-deep: #120507;
-            --bg-card: rgba(18, 8, 10, 0.88);
-            --bg-card-2: rgba(24, 10, 12, 0.94);
+            --bg-black: #070707;
+            --bg-dark: #120809;
+            --bg-card: rgba(18, 10, 12, 0.86);
+            --bg-card-2: rgba(28, 12, 15, 0.92);
 
-            --red-main: #ff2a4f;
-            --red-neon: #ff3b5f;
-            --red-soft: #ff6b86;
-            --red-dark: #8f1024;
-            --red-wine: #3b0b12;
+            --red-main: #ff244f;
+            --red-soft: #ff4d6d;
+            --red-deep: #8f1128;
+            --red-blood: #5a0d18;
+            --wine: #2a0a10;
 
-            --text-main: #f7eeee;
-            --text-soft: #e1cfd3;
-            --text-muted: #bb9ea5;
+            --text-main: #f5eaea;
+            --text-soft: #d7c6c9;
+            --text-dim: #b28f96;
 
-            --border-main: rgba(255, 65, 95, 0.28);
-            --border-soft: rgba(255, 65, 95, 0.12);
+            --border-main: rgba(255, 70, 100, 0.28);
+            --border-soft: rgba(255, 70, 100, 0.16);
 
-            --glow-sm: 0 0 12px rgba(255, 42, 79, 0.28);
-            --glow-md: 0 0 20px rgba(255, 42, 79, 0.42);
-            --glow-lg: 0 0 34px rgba(255, 42, 79, 0.58);
-
-            --shadow-main: 0 12px 36px rgba(0, 0, 0, 0.58);
+            --glow-main: 0 0 18px rgba(255, 36, 79, 0.38);
+            --glow-strong: 0 0 28px rgba(255, 36, 79, 0.55);
+            --shadow-main: 0 12px 36px rgba(0, 0, 0, 0.55);
         }
 
         html, body {
@@ -40,56 +38,42 @@
         }
 
         body {
-            background:
-                radial-gradient(circle at 50% 100%, rgba(255, 20, 50, 0.10) 0%, transparent 22%),
-                radial-gradient(circle at 85% 12%, rgba(255, 255, 255, 0.06) 0%, transparent 14%),
-                radial-gradient(circle at 18% 16%, rgba(255, 30, 60, 0.08) 0%, transparent 18%),
-                linear-gradient(135deg, #060606 0%, #100506 26%, #18080c 52%, #070707 100%);
             color: var(--text-main);
             font-family: 'Segoe UI', system-ui, sans-serif;
-            min-height: 100vh;
             margin: 0;
             padding: 0;
+            background:
+                radial-gradient(circle at 15% 18%, rgba(255, 40, 70, 0.16) 0%, transparent 24%),
+                radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.07) 0%, transparent 18%),
+                radial-gradient(circle at 50% 70%, rgba(120, 10, 25, 0.18) 0%, transparent 30%),
+                linear-gradient(135deg, #0a0607 0%, #120708 30%, #18090d 58%, #090909 100%);
             background-attachment: fixed;
+            overflow-x: hidden;
             -ms-overflow-style: none;
             scrollbar-width: none;
             position: relative;
-            overflow-x: hidden;
         }
 
-        /* Красный диагональный луч */
         body::before {
             content: "";
             position: fixed;
             inset: 0;
             pointer-events: none;
             background:
-                linear-gradient(132deg,
-                    rgba(255, 20, 40, 0.00) 0%,
-                    rgba(255, 20, 40, 0.00) 6%,
-                    rgba(255, 35, 60, 0.16) 9%,
-                    rgba(255, 50, 80, 0.28) 11%,
-                    rgba(255, 30, 55, 0.12) 13%,
-                    rgba(255, 20, 40, 0.00) 17%,
-                    rgba(255, 20, 40, 0.00) 100%);
-            filter: blur(3px);
-            opacity: 0.95;
+                linear-gradient(125deg, rgba(255, 25, 60, 0.18) 0%, rgba(255, 25, 60, 0.08) 10%, transparent 22%),
+                radial-gradient(circle at 50% 45%, rgba(255, 60, 90, 0.07) 0%, transparent 24%);
             mix-blend-mode: screen;
+            opacity: 0.95;
         }
 
-        /* Дымка / сценический туман */
         body::after {
             content: "";
             position: fixed;
             inset: 0;
             pointer-events: none;
             background:
-                radial-gradient(circle at 45% 45%, rgba(255, 80, 100, 0.08) 0%, transparent 12%),
-                radial-gradient(circle at 52% 55%, rgba(255, 120, 140, 0.06) 0%, transparent 10%),
-                radial-gradient(circle at 58% 48%, rgba(255, 255, 255, 0.03) 0%, transparent 8%),
-                radial-gradient(circle at 40% 70%, rgba(255, 35, 55, 0.06) 0%, transparent 14%);
-            filter: blur(24px);
-            opacity: 0.95;
+                radial-gradient(circle at 50% 100%, rgba(255, 20, 60, 0.12) 0%, transparent 25%);
+            opacity: 0.8;
         }
 
         ::-webkit-scrollbar { display: none; width: 0; height: 0; }
@@ -103,13 +87,13 @@
         .main-content {
             position: relative;
             background:
-                linear-gradient(180deg, rgba(20, 9, 11, 0.84) 0%, rgba(8, 7, 7, 0.93) 100%);
-            border-radius: 18px;
+                linear-gradient(180deg, rgba(20, 10, 12, 0.88) 0%, rgba(10, 7, 8, 0.94) 100%);
+            border-radius: 20px;
             border: 1px solid var(--border-main);
             box-shadow:
-                0 0 0 1px rgba(255, 50, 80, 0.04),
-                0 0 50px rgba(120, 10, 20, 0.18),
-                0 18px 48px rgba(0, 0, 0, 0.62);
+                0 0 0 1px rgba(255, 50, 80, 0.05),
+                0 0 50px rgba(120, 10, 25, 0.20),
+                0 18px 50px rgba(0, 0, 0, 0.62);
             padding: 2rem 1.5rem;
             margin-bottom: 3rem;
             min-height: 100vh;
@@ -122,8 +106,9 @@
             inset: 0;
             pointer-events: none;
             background:
-                radial-gradient(circle at 20% 12%, rgba(255, 60, 90, 0.05) 0%, transparent 18%),
-                radial-gradient(circle at 70% 85%, rgba(255, 30, 60, 0.04) 0%, transparent 18%);
+                radial-gradient(circle at 12% 8%, rgba(255, 60, 90, 0.07) 0%, transparent 18%),
+                radial-gradient(circle at 85% 20%, rgba(255, 255, 255, 0.03) 0%, transparent 15%),
+                radial-gradient(circle at 48% 100%, rgba(255, 30, 65, 0.05) 0%, transparent 20%);
         }
 
         .header-wrapper {
@@ -137,7 +122,21 @@
             z-index: 2;
         }
 
-        .logo-box, .qr-box {
+        .logo-box {
+            width: 122px;
+            height: 92px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 3px;
+            border-radius: 12px;
+            box-shadow:
+                0 0 0 1px rgba(255, 65, 95, 0.18),
+                0 0 14px rgba(255, 42, 79, 0.22);
+            border: 1px solid rgba(255, 60, 90, 0.55);
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .qr-box {
             width: 110px;
             height: 110px;
             background: white;
@@ -152,24 +151,33 @@
             flex-shrink: 0;
         }
 
-        .logo-box img, .qr-box img {
+        .logo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            display: block;
+            border-radius: 8px;
+        }
+
+        .qr-box img {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            display: block;
             border-radius: 8px;
         }
 
         .header {
             text-align: center;
             background:
-                linear-gradient(180deg, rgba(34, 10, 14, 0.92) 0%, rgba(10, 7, 8, 0.96) 100%);
+                linear-gradient(180deg, rgba(35, 12, 16, 0.92) 0%, rgba(12, 7, 8, 0.96) 100%);
             border-radius: 18px;
-            border: 2px solid rgba(255, 60, 90, 0.75);
+            border: 2px solid rgba(255, 50, 85, 0.72);
             box-shadow:
-                0 0 0 1px rgba(255, 60, 90, 0.08),
-                0 0 24px rgba(255, 42, 79, 0.18),
-                0 10px 28px rgba(0, 0, 0, 0.52);
-            padding: 1.25rem 2.6rem;
+                0 0 0 1px rgba(255, 50, 85, 0.08),
+                0 0 28px rgba(255, 36, 79, 0.16),
+                0 10px 28px rgba(0, 0, 0, 0.55);
+            padding: 1.3rem 2.7rem;
             flex: 1;
             max-width: 720px;
             min-width: 320px;
@@ -183,32 +191,26 @@
             inset: 0;
             pointer-events: none;
             background:
-                linear-gradient(90deg,
-                    transparent 0%,
-                    rgba(255, 80, 110, 0.05) 48%,
-                    rgba(255, 160, 180, 0.03) 50%,
-                    rgba(255, 80, 110, 0.05) 52%,
-                    transparent 100%);
+                linear-gradient(90deg, transparent 0%, rgba(255, 60, 90, 0.04) 50%, transparent 100%);
         }
 
         .header h1 {
             font-size: 2.8rem;
             font-weight: 900;
             margin: 0;
-            color: var(--red-neon);
+            color: #ff3b60;
+            letter-spacing: 0.04em;
             text-shadow:
-                0 0 8px rgba(255, 60, 95, 0.40),
-                0 0 16px rgba(255, 60, 95, 0.32),
-                0 0 28px rgba(255, 60, 95, 0.18);
+                0 0 8px rgba(255, 59, 96, 0.35),
+                0 0 18px rgba(255, 59, 96, 0.30);
             line-height: 1.05;
-            letter-spacing: 0.05em;
         }
 
         .header .total {
             font-size: 1.3rem;
-            color: #ffd6dd;
-            text-shadow: 0 0 10px rgba(255, 90, 120, 0.24);
-            margin-top: 0.65rem;
+            color: #ffd1d8;
+            text-shadow: 0 0 10px rgba(255, 90, 120, 0.25);
+            margin-top: 0.7rem;
             font-weight: 600;
         }
 
@@ -218,13 +220,13 @@
             gap: 0;
             margin-top: 1rem;
             background:
-                linear-gradient(180deg, rgba(22, 10, 12, 0.92) 0%, rgba(10, 8, 8, 0.96) 100%);
-            border-radius: 14px;
+                linear-gradient(180deg, rgba(21, 10, 12, 0.94) 0%, rgba(10, 8, 8, 0.96) 100%);
+            border-radius: 16px;
             overflow: hidden;
             box-shadow:
-                0 0 0 1px rgba(255, 60, 90, 0.05),
-                0 12px 40px rgba(0, 0, 0, 0.60);
-            border: 1px solid rgba(255, 70, 100, 0.14);
+                0 0 0 1px rgba(255, 55, 85, 0.05),
+                0 14px 40px rgba(0, 0, 0, 0.58);
+            border: 1px solid rgba(255, 60, 90, 0.12);
             position: relative;
             z-index: 2;
         }
@@ -235,11 +237,7 @@
             inset: 0;
             pointer-events: none;
             background:
-                linear-gradient(180deg,
-                    rgba(255, 50, 80, 0.03) 0%,
-                    transparent 18%,
-                    transparent 82%,
-                    rgba(255, 50, 80, 0.03) 100%);
+                linear-gradient(180deg, rgba(255, 60, 90, 0.03) 0%, transparent 22%, transparent 78%, rgba(255, 60, 90, 0.03) 100%);
         }
 
         .individual-grid {
@@ -257,9 +255,10 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 1rem;
             padding: 1.4rem 1.8rem;
-            border-bottom: 1px solid rgba(255, 80, 110, 0.08);
-            transition: background 0.22s ease, transform 0.22s ease;
+            border-bottom: 1px solid rgba(255, 70, 100, 0.09);
+            transition: background 0.25s ease, transform 0.2s ease;
             position: relative;
         }
 
@@ -267,18 +266,18 @@
             content: "";
             position: absolute;
             left: 0;
-            top: 16%;
-            bottom: 16%;
-            width: 4px;
-            border-radius: 8px;
-            background: linear-gradient(180deg, #ff4468 0%, #7a0f21 100%);
-            box-shadow: 0 0 14px rgba(255, 60, 95, 0.25);
+            top: 18%;
+            bottom: 18%;
+            width: 3px;
+            border-radius: 10px;
+            background: linear-gradient(180deg, rgba(255, 70, 100, 0.75), rgba(120, 15, 28, 0.4));
+            box-shadow: 0 0 12px rgba(255, 50, 80, 0.18);
             opacity: 0;
-            transition: opacity 0.22s ease;
+            transition: opacity 0.2s ease;
         }
 
         .snake-item:hover {
-            background: rgba(255, 45, 75, 0.08);
+            background: rgba(255, 35, 70, 0.08);
         }
 
         .snake-item:hover::before {
@@ -286,45 +285,45 @@
         }
 
         .snake-item:nth-child(even) {
-            border-left: 1px solid rgba(255, 80, 110, 0.08);
+            border-left: 1px solid rgba(255, 70, 100, 0.08);
         }
 
         .position {
             width: 70px;
             font-weight: 800;
-            color: #ffb8c4;
-            text-shadow:
-                0 0 8px rgba(255, 100, 130, 0.18),
-                0 0 14px rgba(255, 100, 130, 0.08);
+            color: #ff9cab;
+            text-shadow: 0 0 10px rgba(255, 80, 110, 0.18);
             text-align: center;
             font-size: 1.5rem;
+            flex-shrink: 0;
         }
 
         .name {
             flex: 1;
             font-size: 1.35rem;
-            padding: 0 1.5rem;
+            padding: 0 1.2rem;
             color: var(--text-main);
             font-weight: 500;
         }
 
         .votes {
             font-weight: 800;
-            color: var(--red-neon);
+            color: #ff4568;
             text-shadow:
-                0 0 10px rgba(255, 60, 95, 0.34),
-                0 0 20px rgba(255, 60, 95, 0.12);
+                0 0 8px rgba(255, 70, 104, 0.25),
+                0 0 14px rgba(255, 70, 104, 0.14);
             min-width: 120px;
             text-align: right;
             font-size: 1.45rem;
+            flex-shrink: 0;
         }
 
         .bottom-controls {
             background:
-                linear-gradient(180deg, rgba(10, 7, 8, 0.96) 0%, rgba(18, 8, 10, 0.98) 100%);
+                linear-gradient(180deg, rgba(10, 7, 8, 0.96) 0%, rgba(16, 8, 10, 0.98) 100%);
             backdrop-filter: blur(8px);
-            border-top: 1px solid rgba(255, 80, 110, 0.12);
-            padding: 1.5rem 1rem;
+            border-top: 1px solid rgba(255, 70, 100, 0.14);
+            padding: 1.7rem 1rem 1.8rem;
             text-align: center;
             box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35);
         }
@@ -333,73 +332,101 @@
             display: inline-block;
             padding: 1rem 2.8rem;
             font-size: 1.3rem;
-            font-weight: bold;
-            background: linear-gradient(45deg, #ff2f58, #8b1224);
-            border: 1px solid rgba(255, 100, 130, 0.34);
+            font-weight: 700;
+            background: linear-gradient(45deg, #ff2a56, #961327);
+            border: 1px solid rgba(255, 90, 120, 0.35);
             border-radius: 50px;
             color: white;
             text-decoration: none;
             transition: all 0.3s ease;
             box-shadow:
-                0 0 22px rgba(255, 50, 80, 0.28),
-                0 8px 22px rgba(0, 0, 0, 0.34);
+                0 0 22px rgba(255, 42, 86, 0.28),
+                0 8px 22px rgba(0, 0, 0, 0.35);
             margin-bottom: 1.5rem;
         }
 
         .back-btn:hover {
             transform: translateY(-2px);
-            box-shadow:
-                0 0 36px rgba(255, 50, 80, 0.42),
-                0 12px 28px rgba(0, 0, 0, 0.40);
-            background: linear-gradient(45deg, #ff476d, #a3132b);
             color: white;
+            box-shadow:
+                0 0 34px rgba(255, 42, 86, 0.42),
+                0 12px 28px rgba(0, 0, 0, 0.38);
+            background: linear-gradient(45deg, #ff476d, #b11631);
         }
 
         .rounds-section h3 {
-            color: #ffc4ce;
+            color: #ffb5c1;
             margin-bottom: 1rem;
             font-size: 1.5rem;
-            text-shadow: 0 0 10px rgba(255, 80, 110, 0.14);
+            text-shadow: 0 0 10px rgba(255, 80, 110, 0.15);
             font-weight: 700;
         }
 
         .btn-custom {
             background: rgba(255, 255, 255, 0.01);
-            border: 1px solid rgba(255, 80, 110, 0.42);
-            color: #ff9fb0;
+            border: 1px solid rgba(255, 70, 100, 0.45);
+            color: #ff8ea2;
             transition: all 0.25s ease;
             min-width: 150px;
             margin: 0 0.4rem 0.6rem;
             border-radius: 14px;
             padding: 0.7rem 1rem;
-            box-shadow: inset 0 0 0 1px rgba(255, 60, 90, 0.03);
+            box-shadow: inset 0 0 0 1px rgba(255, 70, 100, 0.04);
         }
 
         .btn-custom:hover {
-            background: rgba(255, 50, 80, 0.10);
-            color: white;
-            border-color: rgba(255, 110, 140, 0.70);
-            box-shadow: 0 0 16px rgba(255, 50, 80, 0.16);
+            background: rgba(255, 45, 80, 0.10);
+            color: #ffffff;
+            border-color: rgba(255, 90, 120, 0.72);
+            box-shadow: 0 0 18px rgba(255, 50, 80, 0.15);
         }
 
         .btn-custom-active {
-            background: linear-gradient(45deg, #ff305a, #8c1326);
-            border: 1px solid rgba(255, 110, 140, 0.34);
+            background: linear-gradient(45deg, #ff2e58, #8f1426);
+            border: 1px solid rgba(255, 100, 130, 0.45);
             color: white;
             box-shadow:
-                0 0 20px rgba(255, 50, 80, 0.26),
+                0 0 20px rgba(255, 45, 80, 0.28),
                 0 6px 18px rgba(0, 0, 0, 0.22);
-            font-weight: bold;
+            font-weight: 700;
             border-radius: 14px;
             padding: 0.7rem 1rem;
         }
 
         @media (max-width: 992px) {
-            .results-grid, .individual-grid { grid-template-columns: 1fr; }
-            .snake-item:nth-child(even) { border-left: none; }
-            .logo-box, .qr-box { position: static; margin: 1rem auto; width: 160px; height: 160px; }
-            .header h1 { font-size: 2.4rem; }
-            .header { padding: 1.5rem 2rem; max-width: 95%; }
+            .results-grid, .individual-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .snake-item:nth-child(even) {
+                border-left: none;
+            }
+
+            .logo-box, .qr-box {
+                position: static;
+                margin: 1rem auto;
+                width: 150px;
+                height: 150px;
+            }
+
+            .header h1 {
+                font-size: 2.3rem;
+            }
+
+            .header {
+                padding: 1.5rem 1.8rem;
+                max-width: 95%;
+            }
+
+            .name {
+                font-size: 1.2rem;
+                padding: 0 0.8rem;
+            }
+
+            .votes {
+                min-width: 90px;
+                font-size: 1.25rem;
+            }
         }
 
         @media (max-width: 576px) {
@@ -414,7 +441,6 @@
 
             .name {
                 font-size: 1rem;
-                padding: 0 0.75rem;
             }
 
             .votes {
@@ -438,14 +464,14 @@
 
 <div class="main-content">
     <div class="header-wrapper">
-        <div class="logo-box"><img src="{% static 'images/logo.png' %}" alt="Логотип"></div>
+        <div class="logo-box"><img src="{% static 'logo.png' %}" alt="Логотип"></div>
         <div class="header">
             <h1>БИТВА ВЕДУЩИХ</h1>
             {% if not round %}
             <div class="total text-warning">Активного раунда сейчас нет</div>
             {% endif %}
         </div>
-        <div class="qr-box"><img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота"></div>
+        <div class="qr-box"><img src="{% static 'bot_qr.jpg' %}" alt="QR-код бота"></div>
     </div>
 
     {% if round %}

@@ -19,7 +19,7 @@ BOT_TOKEN = config("TELEGRAM_TOKEN")
 
 # --- РОЛИ АДМИНОВ ---
 FULL_ADMINS = [1251634923]  # Имеют доступ ко всему (ТВОЙ ID)
-LIMITED_ADMINS = []  # Помощники (только выставляют и завершают раунд)
+LIMITED_ADMINS = [558525552]  # Помощники (только выставляют и завершают раунд)
 
 
 def is_full_admin(uid: int) -> bool: return uid in FULL_ADMINS

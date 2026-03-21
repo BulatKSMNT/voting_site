@@ -72,11 +72,6 @@ class RoundViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def active_info(self, request):
-        """
-        Публичный endpoint:
-        - всегда отдает текущий активный/опубликованный раунд
-        - user_votes отдает ТОЛЬКО если запрос аутентифицирован токеном
-        """
         round_obj = Round.objects.filter(is_current=True, status__in=["active", "published"]).first()
 
         if not round_obj:
@@ -138,35 +133,31 @@ class RoundViewSet(viewsets.ModelViewSet):
                             "message": "Индив. раунд завершен (участников не было)."
                         })
 
-                    # Если бот явно передал, куда переносить
                     if target_round_id:
+                        # Ищем среди active И published
                         target_round = Round.objects.get(
                             id=target_round_id,
                             campaign=round_obj.campaign,
                             type="standard",
-                            status="active"
+                            status__in=["active", "published"]
                         )
                     else:
-                        # Старое поведение: берем первый активный стандартный раунд этой кампании
                         target_round = Round.objects.filter(
                             campaign=round_obj.campaign,
                             type="standard",
-                            status="active"
+                            status__in=["active", "published"]
                         ).first()
 
-                        # Если его нет — создаем новый
                         if not target_round:
-                            max_num = Round.objects.filter(campaign=round_obj.campaign).aggregate(m=Max('number'))[
-                                          'm'] or 0
+                            max_num = Round.objects.filter(campaign=round_obj.campaign).aggregate(m=Max('number'))['m'] or 0
                             target_round = Round.objects.create(
                                 campaign=round_obj.campaign,
                                 number=max_num + 1,
                                 type="standard",
-                                status="active",
+                                status="published",  # <--- СОЗДАЕМ ОПУБЛИКОВАННЫМ
                                 winners_count=3
                             )
 
-                    # Переносим и сохраняем голоса ЗА
                     yes_votes = Vote.objects.filter(participant=p, choice="yes")
                     new_p = Participant.objects.create(
                         round=target_round,
@@ -195,7 +186,6 @@ class RoundViewSet(viewsets.ModelViewSet):
                         )
                     })
 
-
                 elif action_type == "end_standard":
                     round_obj.status = "published"
                     round_obj.is_current = False
@@ -218,16 +208,11 @@ class RoundViewSet(viewsets.ModelViewSet):
                     })
 
                 elif action_type == "transfer_standard":
-                    target_round = Round.objects.get(id=target_round_id, type="standard", status="active")
+                    target_round = Round.objects.get(id=target_round_id, type="standard", status__in=["active", "published"])
                     if target_round.id == round_obj.id:
-                        return Response(
-                            {"error": "Нельзя переносить участников в тот же самый раунд."},
-                            status=400)
+                        return Response({"error": "Нельзя переносить участников в тот же самый раунд."}, status=400)
                     if target_round.campaign_id != round_obj.campaign_id:
-                        return Response(
-                            {"error": "Нельзя переносить участников в раунд другой кампании."},
-                            status=400
-                        )
+                        return Response({"error": "Нельзя переносить участников в раунд другой кампании."}, status=400)
 
                     winners_ids = request.data.get("winners_ids", [])
                     winners = Participant.objects.filter(id__in=winners_ids, round=round_obj)

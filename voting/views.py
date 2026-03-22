@@ -403,7 +403,8 @@ class CurrentRoundResults(View):
         if request.GET.get("ajax") == "1":
             return JsonResponse({
                 "left_column": context["left_column"],
-                "right_column": context["right_column"]
+                "right_column": context["right_column"],
+                "total_votes": context["total_votes"]
             })
 
         return render(request, "voting/results.html", context)

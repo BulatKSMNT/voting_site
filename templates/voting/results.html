@@ -468,8 +468,11 @@
         <div class="logo-box"><img src="{% static 'images/logo.png' %}" alt="Логотип"></div>
         <div class="header">
             <h1>БИТВА ВЕДУЩИХ</h1>
-            {% if not round %}
-            <div class="total text-warning">Активного раунда сейчас нет</div>
+            {% if round %}
+                <!-- ДОБАВЛЯЕМ СЧЕТЧИК СЮДА -->
+                <div class="total">Всего голосов: <span id="total-votes-count">{{ total_votes }}</span></div>
+            {% else %}
+                <div class="total text-warning">Активного раунда сейчас нет</div>
             {% endif %}
         </div>
         <div class="qr-box"><img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота"></div>
@@ -566,6 +569,11 @@
             const rightCol = document.getElementById('right-column');
             if (rightCol && data.right_column) {
                 rightCol.innerHTML = data.right_column.map(buildRowHTML).join('');
+            }
+
+            const totalCounter = document.getElementById('total-votes-count');
+            if (totalCounter && data.total_votes !== undefined) {
+                totalCounter.innerText = data.total_votes;
             }
 
         } catch (error) {

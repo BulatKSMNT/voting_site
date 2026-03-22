@@ -107,6 +107,26 @@ class RoundViewSet(viewsets.ModelViewSet):
             ]
         })
 
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def update_winners_count(self, request, pk=None):
+        """Изменяет количество призовых мест в раунде"""
+        try:
+            round_obj = Round.objects.get(pk=pk)
+            new_count = request.data.get("winners_count")
+
+            if not new_count or int(new_count) < 1:
+                return Response({"error": "Укажите корректное число победителей (от 1)"}, status=400)
+
+            round_obj.winners_count = int(new_count)
+            round_obj.save(update_fields=["winners_count"])
+
+            return Response({"message": f"✅ В Раунде #{round_obj.number} теперь {new_count} призовых мест!"})
+        except Round.DoesNotExist:
+            return Response({"error": "Раунд не найден."}, status=404)
+        except ValueError:
+            return Response({"error": "Количество должно быть числом."}, status=400)
+
     @action(detail=True, methods=['post'])
     def end_and_transfer(self, request, pk=None):
         action_type = request.data.get("action_type", "auto_individual")

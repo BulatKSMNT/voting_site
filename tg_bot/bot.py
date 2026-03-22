@@ -13,7 +13,7 @@ from decouple import config
 
 import api
 import lexicon
-from middlewares import AntiFloodMiddleware
+from middlewares import AntiFloodMiddleware, RoleLoggingMiddleware
 from logging.handlers import RotatingFileHandler
 
 BOT_TOKEN = config("TELEGRAM_TOKEN")
@@ -40,6 +40,10 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler]
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+dp.message.middleware(RoleLoggingMiddleware(FULL_ADMINS, LIMITED_ADMINS))
+dp.callback_query.middleware(RoleLoggingMiddleware(FULL_ADMINS, LIMITED_ADMINS))
+
+# 2. А потом защищаем от спама
 dp.message.middleware(AntiFloodMiddleware(limit_seconds=1.0))
 dp.callback_query.middleware(AntiFloodMiddleware(limit_seconds=1.0))
 

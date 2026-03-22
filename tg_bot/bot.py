@@ -121,19 +121,27 @@ async def get_vote_menu(user_id: int):
             text += "Участников пока нет\n"
         else:
             p = participants[0]
-            text += f"Готовы ли вы пригласить на свое мероприятие такого ведущего, как\n<b>{p['full_name']}</b>?"
 
+            # Проверяем, как проголосовал этот конкретный юзер
             user_vote = next((v for v in user_votes if v["participant_id"] == p["id"]), None)
-            row = []
-            btn_yes_text, btn_no_text = "Да", "Нет"
-            if user_vote:
-                text += f"\n\nВы уже проголосовали {'за' if user_vote['choice'] == 'yes' else 'против'}."
-                if user_vote["choice"] == "yes": btn_yes_text += " ❤️"
-                if user_vote["choice"] == "no": btn_no_text += " 💔"
 
-            row.append(InlineKeyboardButton(text=btn_yes_text, callback_data=f"vote_{data['round_id']}_{p['id']}_yes"))
-            row.append(InlineKeyboardButton(text=btn_no_text, callback_data=f"vote_{data['round_id']}_{p['id']}_no"))
-            kb.inline_keyboard.append(row)
+            if user_vote:
+                # ЕСЛИ ЮЗЕР УЖЕ ПРОГОЛОСОВАЛ:
+                # Меняем текст сообщения на утвердительный и НЕ добавляем кнопки
+                choice_text = "ЗА" if user_vote['choice'] == 'yes' else "ПРОТИВ"
+                emoji = "❤️" if user_vote['choice'] == 'yes' else "💔"
+                text = f"Ваш голос <b>{choice_text}</b> {emoji}  успешно учтён!"
+                # kb останется пустой (без кнопок)
+            else:
+                # ЕСЛИ ЕЩЕ НЕ ГОЛОСОВАЛ:
+                # Показываем стандартный вопрос и добавляем кнопки Да/Нет
+                text += f"Готовы ли вы пригласить на свое мероприятие такого ведущего, как\n<b>{p['full_name']}</b>?"
+                row = [
+                    InlineKeyboardButton(text="Да", callback_data=f"vote_{data['round_id']}_{p['id']}_yes"),
+                    InlineKeyboardButton(text="Нет", callback_data=f"vote_{data['round_id']}_{p['id']}_no")
+                ]
+                kb.inline_keyboard.append(row)
+
     else:
         voted_ids = [v["participant_id"] for v in user_votes]
         text += "Выберите участников (можно нескольких):\n"

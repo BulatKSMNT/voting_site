@@ -291,21 +291,32 @@ async def process_smart_set(call: CallbackQuery, state: FSMContext):
 # УМНОЕ ЗАВЕРШЕНИЕ РАУНДА
 @dp.message(Command("end_current_round"))
 async def cmd_end_current(msg: Message, state: FSMContext):
-    if not is_any_admin(msg.from_user.id):
-        return
+    if not is_any_admin(msg.from_user.id): return
+
+    round_id = None
+    round_type = None
 
     try:
-        # Проверяем, есть ли раунд на экране
+        # Пытаемся получить тот раунд, который сейчас выставлен на экранах
         data = await api.request("GET", f"rounds/active_info/?user_id={msg.from_user.id}")
         round_id = data.get("round_id")
+        round_type = data.get("round_type")
+    except Exception:
+        # Если API выдало ошибку (404 Нет активных раундов), мы просто перехватываем её
+        # и идем дальше (round_id останется None)
+        pass
 
-        # Если на экране НИЧЕГО НЕТ, предлагаем выбрать из опубликованных/активных вручную
+    try:
+        # СЦЕНАРИЙ А: На экране НИЧЕГО НЕТ (или мы поймали 404).
+        # Предлагаем выбрать из ОПУБЛИКОВАННЫХ стандартных раундов вручную.
         if not round_id:
             rounds = await api.request("GET", "rounds", is_admin=True)
-            available = [r for r in rounds if r["status"] in ["active", "published"]]
+            # Берем только опубликованные стандартные (ведь активные мы завершаем кнопкой, а индивидуальные пролетают сами)
+            available = [r for r in rounds if r["status"] == "published" and r["type"] == "standard"]
 
             if not available:
-                await msg.answer("Нет ни одного активного или опубликованного раунда для завершения/переноса.")
+                await msg.answer(
+                    "Нет ни одного активного на экране или опубликованного в архиве раунда для завершения/переноса.")
                 return
 
             kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -315,16 +326,141 @@ async def cmd_end_current(msg: Message, state: FSMContext):
                     InlineKeyboardButton(text=f"Р#{r['number']} ({name}) - {r['status']}",
                                          callback_data=f"endsrc_{r['id']}")
                 ])
-            await msg.answer("На экранах сейчас пусто. Какой раунд вы хотите завершить и перенести?", reply_markup=kb)
+            await msg.answer(
+                "На экранах сейчас пусто. Какой из опубликованных раундов вы хотите завершить (перенести победителей)?",
+                reply_markup=kb)
             await state.set_state(TransferStandardStates.choose_source_round)
             return
 
-        # Если раунд ЕСТЬ на экране, идем по стандартному пути
-        await process_end_round_logic(msg, state, round_id)
+        # СЦЕНАРИЙ Б: На экране ЕСТЬ раунд (active или published), завершаем ЕГО.
+        await process_end_round_logic(msg, state, round_id, round_type)
 
     except Exception as e:
         logging.exception("cmd_end_current failed")
         await msg.answer(f"Ошибка при поиске раунда: {e}")
+
+
+@dp.callback_query(F.data.startswith("endsrc_"), TransferStandardStates.choose_source_round)
+async def process_choose_source_round(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    round_id = int(call.data.split('_')[1])
+
+    # Так как мы разрешаем выбирать вручную только стандартные раунды, передаем тип жестко
+    await process_end_round_logic(call.message, state, round_id, "standard")
+
+
+async def process_end_round_logic(message: Message, state: FSMContext, round_id: int, round_type: str):
+    """Общая логика завершения раунда (вызывается и автоматически, и после ручного выбора)"""
+    try:
+        rounds = await api.request("GET", "rounds", is_admin=True)
+        source_round_obj = next((r for r in rounds if r["id"] == round_id), None)
+
+        if not source_round_obj:
+            await message.edit_text("Не удалось найти выбранный раунд в базе.")
+            return
+
+        campaign_id = source_round_obj["campaign"]
+
+        # =========================
+        # ИНДИВИДУАЛЬНЫЙ РАУНД
+        # =========================
+        if round_type == "individual":
+            active_standards = [
+                r for r in rounds
+                if r["status"] in ["active", "published"]
+                   and r["type"] == "standard"
+                   and r["campaign"] == campaign_id
+            ]
+
+            if len(active_standards) <= 1:
+                payload = {"action_type": "auto_individual"}
+                if len(active_standards) == 1:
+                    payload["target_round_id"] = active_standards[0]["id"]
+
+                res = await api.request("POST", f"rounds/{round_id}/end_and_transfer", payload, is_admin=True)
+
+                text = f"{res.get('message', 'Завершено.')}\n\n"
+                winners = res.get("winners", [])
+                if winners:
+                    text += "<b>Результат:</b>\n"
+                    for w in winners:
+                        text += f"🏆 {w['name']} — {w['votes']} голосов\n"
+
+                if isinstance(message, CallbackQuery):
+                    await message.message.edit_text(text, parse_mode="HTML")
+                else:
+                    await message.answer(text, parse_mode="HTML")
+                await state.clear()
+                return
+
+            await state.clear()
+            await state.update_data(source_round=round_id, source_type="individual", campaign_id=campaign_id)
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[])
+            for r in active_standards:
+                kb.inline_keyboard.append([
+                    InlineKeyboardButton(text=f"В раунд #{r['number']} (Камп. {r['campaign_order_number']})",
+                                         callback_data=f"trans_{r['id']}")
+                ])
+            kb.inline_keyboard.append(
+                [InlineKeyboardButton(text="Создать новый стандартный раунд", callback_data="trans_new")])
+
+            await state.set_state(TransferStandardStates.choose_target)
+
+            if isinstance(message, CallbackQuery):
+                await message.message.edit_text("Куда перенести участника из индивидуального раунда?", reply_markup=kb)
+            else:
+                await message.answer("Куда перенести участника из индивидуального раунда?", reply_markup=kb)
+            return
+
+        # =========================
+        # СТАНДАРТНЫЙ РАУНД
+        # =========================
+        res = await api.request("POST", f"rounds/{round_id}/end_and_transfer", {"action_type": "end_standard"},
+                                is_admin=True)
+        winners = res.get("winners", [])
+
+        text = f"🏁 {res.get('message')}\n\n<b>Победители:</b>\n"
+        for w in winners:
+            text += f"🏆 {w['name']} — {w['votes']} голосов\n"
+
+        await state.clear()
+        await state.update_data(source_round=round_id, winners_ids=[w['id'] for w in winners], source_type="standard",
+                                campaign_id=campaign_id)
+
+        rounds_after = await api.request("GET", "rounds", is_admin=True)
+        active_standards = [
+            r for r in rounds_after
+            if r["status"] in ["active", "published"]
+               and r["type"] == "standard"
+               and r["campaign"] == campaign_id
+               and r["id"] != round_id
+        ]
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+        for r in active_standards:
+            kb.inline_keyboard.append(
+                [InlineKeyboardButton(text=f"В раунд #{r['number']} (Камп. {r['campaign_order_number']})",
+                                      callback_data=f"trans_{r['id']}")])
+        kb.inline_keyboard.append(
+            [InlineKeyboardButton(text="Создать новый стандартный раунд", callback_data="trans_new")])
+        kb.inline_keyboard.append(
+            [InlineKeyboardButton(text="Не переносить (Оставить как есть)", callback_data="trans_none")])
+
+        await state.set_state(TransferStandardStates.choose_target)
+
+        if hasattr(message, "message"):  # Если это коллбек
+            await message.message.edit_text(text + "\nКуда перенести этих участников?", reply_markup=kb,
+                                            parse_mode="HTML")
+        else:
+            await message.answer(text + "\nКуда перенести этих участников?", reply_markup=kb, parse_mode="HTML")
+
+    except Exception as e:
+        logging.exception("process_end_round_logic failed")
+        if hasattr(message, "message"):
+            await message.message.edit_text(f"Ошибка при завершении: {e}")
+        else:
+            await message.answer(f"Ошибка при завершении: {e}")
 
 
 @dp.callback_query(F.data.startswith("endsrc_"), TransferStandardStates.choose_source_round)

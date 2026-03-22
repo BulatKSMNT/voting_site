@@ -221,7 +221,15 @@ async def process_vote_callback(callback: CallbackQuery):
         err = str(e).lower()
         if "уже проголосовали" in err or "unique" in err:
             await callback.answer(lexicon.MSG_VOTED_ALREADY, show_alert=True)
+        elif "не активен" in err or "закрыто" in err:
+            # Если юзер жмет кнопки на старых сообщениях
+            await callback.answer("⏳ Голосование за этого участника уже завершено!", show_alert=True)
+        elif "modified" in err:
+            # Если Telegram ругается, что меню не изменилось (защита от двойных кликов)
+            await callback.answer("Ваш голос уже учтён!", show_alert=False)
         else:
+            # Если это реально какая-то другая серверная ошибка — запишем её в лог
+            logging.error(f"VOTE ERROR: {e}")
             await callback.answer(lexicon.MSG_ERROR, show_alert=True)
 
 

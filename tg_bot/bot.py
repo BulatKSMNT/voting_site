@@ -237,7 +237,7 @@ async def cmd_set_current(msg: Message):
         kb = InlineKeyboardMarkup(inline_keyboard=[])
         for r in active:
             mark = " ✅" if r.get("is_current") else ""
-            status_text = " (Идет голос)" if r["status"] == "active" else " (Закрыт/Таблица)"
+            status_text = "Для голос." if r["status"] == "active" else " (Таблица)"
             name = f"Индив: {r.get('participant_name', 'Пусто')}" if r['type'] == 'individual' else "Стандарт"
             btn_text = f"Р#{r['number']} ({name}){status_text}{mark}"
             kb.inline_keyboard.append(

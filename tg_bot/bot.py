@@ -19,8 +19,21 @@ from logging.handlers import RotatingFileHandler
 BOT_TOKEN = config("TELEGRAM_TOKEN")
 
 # --- РОЛИ АДМИНОВ ---
-FULL_ADMINS = [1251634923]
-LIMITED_ADMINS = [558525552]
+def parse_admin_ids(value: str) -> set[int]:
+    return {
+        int(item.strip())
+        for item in value.split(",")
+        if item.strip()
+    }
+
+FULL_ADMINS = parse_admin_ids(config("FULL_ADMIN_IDS", default=""))
+LIMITED_ADMINS = parse_admin_ids(config("LIMITED_ADMIN_IDS", default=""))
+
+def is_full_admin(user_id: int) -> bool:
+    return user_id in FULL_ADMINS
+
+def is_any_admin(user_id: int) -> bool:
+    return user_id in FULL_ADMINS or user_id in LIMITED_ADMINS
 
 
 def is_full_admin(uid: int) -> bool: return uid in FULL_ADMINS

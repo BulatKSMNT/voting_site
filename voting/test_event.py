@@ -77,10 +77,10 @@ class EventTests(TestCase):
                 self.vote(p, uid, choice='yes')
             self.vote(p, 2000, choice='no')
             self.vote(p, 999, choice='yes', expected=403)
-            # Site shows the aggregate top eight while the bot offers the current performance.
+            # Until eight distinct positive scores exist, zero is also a passing score level.
             display, rows = self.board()
             self.assertEqual(display['round_id'], qualification.pk)
-            self.assertEqual(len(rows), 8)
+            self.assertEqual(len(rows), 25 if i < 7 else 8)
             self.actor(1000)
             self.assertEqual(self.api.get('/voting/api/rounds/active_info/').data['round_id'], rd.pk)
             finished = self.action(rd, 'event_finish')
@@ -155,36 +155,38 @@ class EventTests(TestCase):
             delayed.save()
         self.assertEqual(rd.votes.count(), 3)
 
-    def test_tied_second_place_closes_voting_and_only_admin_can_resolve(self):
-        rd = self.semifinal((9, 5, 5, 1, 0, 0, 0, 0))
+    def test_top_two_levels_transfer_four_participants_without_tiebreak(self):
+        rd = self.semifinal((10, 10, 8, 8, 5))
         people = list(rd.participants.all())
+        summary = results(rd)
+        self.assertEqual([p['position'] for p in summary['participants']], [1, 1, 2, 2, 3])
+        self.assertEqual(summary['tie_slots'], 0)
         response = self.action(rd, 'event_finish', uid=202)
-        self.assertTrue(response['needs_tiebreak'])
-        self.assertEqual(response['tie_slots'], 1)
-        self.assertEqual({p['id'] for p in response['tie_candidates']}, {people[1].pk, people[2].pk})
-        self.vote(people[2], 303, expected=400)
-        self.action(rd, 'resolve_tie', {'participant_ids': [people[2].pk]}, uid=202, expected=403)
-        self.action(rd, 'resolve_tie', {'participant_ids': [people[3].pk]}, expected=400)
-        self.action(rd, 'resolve_tie', {'participant_ids': [people[1].pk, people[2].pk]}, expected=400)
-        result = self.action(rd, 'resolve_tie', {'participant_ids': [people[2].pk]})
-        final = Round.objects.get(pk=result['next_round_id'])
-        self.assertEqual(set(final.participants.values_list('source_participant_id', flat=True)), {people[0].pk, people[2].pk})
+        self.assertFalse(response['needs_tiebreak'])
+        final = Round.objects.get(pk=response['next_round_id'])
+        self.assertEqual(set(final.participants.values_list('source_participant_id', flat=True)), {p.pk for p in people[:4]})
         self.assertEqual(final.votes.count(), 0)
-        self.assertTrue(AuditEvent.objects.filter(event='round.tie_resolved', actor_id=101).exists())
+        self.assertEqual(self.action(rd, 'event_finish'), response)
+        self.action(rd, 'resolve_tie', {'participant_ids': [people[0].pk]}, expected=400)
+        # The extra administrator choice is still independent of score levels.
+        self.action(rd, 'jury', {'participant_id': people[4].pk})
+        self.assertEqual(final.participants.count(), 5)
+        self.action(rd, 'jury', {'participant_id': people[0].pk}, expected=400)
+        self.assertEqual(len(self.board(rd)[1]), 5)
 
-    def test_all_zero_first_tour_requires_exact_eight_from_twenty_five(self):
+    def test_all_zero_first_tour_keeps_everyone_in_one_score_level(self):
         prepared = tournament.prepare_event(self.campaign.pk, [f'Name {i}' for i in range(25)])
         rd = Round.objects.get(pk=prepared['qualification_id'])
         for performance in rd.previous_rounds.all():
             tournament.start_round(performance.pk)
             tournament.finish_round(performance.pk)
         response = self.action(rd, 'event_finish')
-        self.assertEqual((response['tie_slots'], len(response['tie_candidates'])), (8, 25))
-        chosen = list(rd.participants.order_by('-pk').values_list('pk', flat=True)[:8])
-        result = self.action(rd, 'resolve_tie', {'participant_ids': chosen})
-        semi = Round.objects.get(pk=result['next_round_id'])
-        self.assertEqual(set(semi.participants.values_list('source_participant_id', flat=True)), set(chosen))
-        self.assertEqual({p['participant_full_name'] for p in self.board(rd)[1]}, set(semi.participants.values_list('full_name', flat=True)))
+        self.assertFalse(response['needs_tiebreak'])
+        semi = Round.objects.get(pk=response['next_round_id'])
+        self.assertEqual(semi.participants.count(), 25)
+        self.assertEqual(semi.votes.count(), 0)
+        self.assertEqual(len(self.board(rd)[1]), 25)
+        self.assertEqual({p['position'] for p in self.board(rd)[1]}, {1})
 
     def test_final_tie_selects_one_of_equal_leaders(self):
         rd = Round.objects.create(campaign=self.campaign, type='standard', event_stage='final', status='active', max_choices=1, winners_count=1)
@@ -380,3 +382,66 @@ class EventTests(TestCase):
         self.assertEqual(self.client.post(url, {'action': 'configure', 'winners_count': 1}).status_code, 302)
         tour.refresh_from_db()
         self.assertEqual(tour.winners_count, 1)
+
+    def test_qualification_site_and_bot_use_identical_score_cutoff(self):
+        names = ['Первый Участник', 'Второй Участник', 'Третий Участник', 'Четвёртый Участник', 'Пятый Участник']
+        data = tournament.create_tour(self.campaign.pk, 'individual', 2, names)
+        rd = Round.objects.get(pk=data['tour_id'])
+        for performance, score in zip(rd.performance_rounds, (10, 10, 8, 8, 5)):
+            tournament.start_round(performance.pk)
+            person = performance.participants.get()
+            Vote.objects.bulk_create([Vote(round=performance, participant=person, user_telegram_id=1000+i, choice='yes') for i in range(score)])
+            # Negative answers never reduce the score used for qualification.
+            Vote.objects.create(round=performance, participant=person, user_telegram_id=2000, choice='no')
+            tournament.finish_round(performance.pk)
+        data, rows = self.board(rd)
+        self.assertEqual([p['participant_full_name'] for p in rows], names[:4])
+        self.assertEqual([p['position'] for p in rows], [1, 1, 2, 2])
+        self.assertEqual([p['votes'] for p in rows], [10, 10, 8, 8])
+        self.actor()
+        bot_rows = self.api.get('/voting/api/rounds/active_info/').data['participants']
+        self.assertEqual([p['full_name'] for p in bot_rows], names[:4])
+        page = self.client.get(f'/voting/results/?round_id={rd.pk}')
+        for name in names[:4]:
+            self.assertContains(page, name)
+        self.assertNotContains(page, names[4])
+        transferred = self.action(rd, 'event_finish')
+        next_tour = Round.objects.get(pk=transferred['next_round_id'])
+        self.assertEqual(list(next_tour.participants.values_list('full_name', flat=True)), names[:4])
+        snapshot = RoundResultSnapshot.objects.filter(round_id=rd.pk).first()
+        self.assertEqual(snapshot.data['algorithm'], 'score-levels-v2')
+        self.assertEqual(sum(p['auto_winner'] for p in snapshot.data['participants']), 4)
+
+    def test_top_one_and_more_levels_than_available(self):
+        rd = self.semifinal((7, 7, 4, 0))
+        for n, count in ((1, 2), (2, 3), (3, 4), (8, 4)):
+            rd.winners_count = n
+            self.assertEqual(sum(p['auto_winner'] for p in results(rd)['participants']), count)
+        empty = Round.objects.create(campaign=self.campaign, winners_count=2)
+        self.assertEqual(results(empty)['participants'], [])
+
+    def test_completed_old_tour_keeps_recorded_exact_count(self):
+        from django.utils import timezone
+        rd = self.semifinal((10, 10, 8, 8, 5))
+        before = results(rd)
+        before['algorithm'] = 'event-exact-count-v1'
+        for index, person in enumerate(before['participants'], 1):
+            person.update(position=index, auto_winner=index <= 2, winner=index <= 2)
+        RoundResultSnapshot.objects.create(campaign_id=rd.campaign_id, round_id=rd.pk, version=1, data=before)
+        Round.objects.filter(pk=rd.pk).update(event_completed=True, status='published', ended_at=timezone.now())
+        rd.refresh_from_db()
+        summary = results(rd)
+        self.assertEqual(summary['algorithm'], 'event-exact-count-v1')
+        self.assertEqual(sum(p['auto_winner'] for p in summary['participants']), 2)
+        self.assertEqual(rd.votes.count(), 41)
+
+    def test_pending_old_tiebreak_can_finish_with_all_passing_scores(self):
+        from django.utils import timezone
+        from .forms import EventControlForm
+        rd = self.semifinal((10, 10, 8, 8, 5))
+        rd.status, rd.ended_at = 'published', timezone.now()
+        rd.save(update_fields=['status', 'ended_at'])
+        self.assertIn(('finish', 'Завершить ТУР и перенести топ-N'), EventControlForm(round_obj=rd).fields['action'].choices)
+        response = self.action(rd, 'event_finish')
+        self.assertFalse(response['needs_tiebreak'])
+        self.assertEqual(Round.objects.get(pk=response['next_round_id']).participants.count(), 4)

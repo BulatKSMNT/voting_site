@@ -37,7 +37,7 @@ def clean_names(names, *, allow_empty=False):
 
 def validate_count(value):
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 100:
-        raise ValidationError('Количество проходящих участников: целое число от 1 до 100.')
+        raise ValidationError('Число лучших уровней баллов (N): целое число от 1 до 100.')
     return value
 
 
@@ -89,7 +89,7 @@ def configure_tour(pk, winners_count):
     rd = locked_round(pk)
     validate_count(winners_count)
     if rd.event_stage == 'performance' or rd.ended_at or rd.event_completed:
-        raise ValidationError('Число проходящих меняется у тура до его завершения.')
+        raise ValidationError('Число уровней баллов меняется у тура до его завершения.')
     if rd.event_stage == 'final' and winners_count != 1:
         raise ValidationError('В финале выбирается один победитель.')
     rd.winners_count = winners_count
@@ -193,8 +193,8 @@ def set_jury(pk, participant_id=None, full_name=''):
 @transaction.atomic
 def resolve_tie(pk, participant_ids):
     rd = locked_round(pk)
-    if not rd.event_stage or not rd.ended_at or rd.event_completed:
-        raise ValidationError('Сначала завершите голосование. Выбор при равенстве доступен до переноса.')
+    if rd.event_stage != 'final' or not rd.ended_at or rd.event_completed:
+        raise ValidationError('Равенство разрешается вручную только в завершённом голосовании финала. В остальных турах проходят все с баллами из топ-N.')
     summary = results(rd)
     candidates = {p['id'] for p in summary['tie_candidates']}
     if len(participant_ids) != len(set(participant_ids)) or len(participant_ids) != summary['tie_slots'] or not set(participant_ids) <= candidates or not candidates:

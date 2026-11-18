@@ -154,14 +154,14 @@ class VotingTests(TestCase):
         self.assertEqual(old.data['total_votes'], 1)
         self.assertEqual(RoundResultSnapshot.objects.first().data['total_votes'], 2)
 
-    def test_ties_preserve_existing_boundary_rule(self):
+    def test_top_two_score_levels_include_tied_leaders_and_next_score(self):
         p2 = Participant.objects.create(round=self.rd, full_name='Tie')
         p3 = Participant.objects.create(round=self.rd, full_name='Third')
         for p, count in ((self.p, 3), (p2, 3), (p3, 2)):
             for i in range(count):
                 Vote.objects.create(round=self.rd, participant=p, user_telegram_id=1000+i)
         response = self.close()
-        self.assertEqual({w['id'] for w in response.data['winners']}, {self.p.pk, p2.pk})
+        self.assertEqual({w['id'] for w in response.data['winners']}, {self.p.pk, p2.pk, p3.pk})
 
     def test_tie_at_last_place_includes_all_tied(self):
         p2 = Participant.objects.create(round=self.rd, full_name='Second')

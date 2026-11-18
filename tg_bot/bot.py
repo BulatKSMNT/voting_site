@@ -224,7 +224,7 @@ async def cmd_help(message: Message):
             "▪️ /jury_winner — Дополнительный победитель по выбору администратора\n"
             "▪️ /start_round — Запустить раунд\n"
             "▪️ /add_participant — Вписать участников (можно списком!)\n"
-            "▪️ /set_winners_count — Изменить кол-во призовых мест\n"
+            "▪️ /set_winners_count — Настроить топ-N по уровням баллов\n"
             "▪️ /del_participant — ❌ Удалить участника\n"
             "▪️ /resurrect_round — 🧟‍♂️ Восстановить раунд\n"
             "▪️ /export — 📊 Скачать Excel-отчет\n"
@@ -662,9 +662,9 @@ async def cmd_set_winners_count(msg: Message, state: FSMContext):
         kb = InlineKeyboardMarkup(inline_keyboard=[])
         for r in available:
             kb.inline_keyboard.append(
-                [InlineKeyboardButton(text=f"Раунд #{r['number']} (Сейчас мест: {r['winners_count']})",
+                [InlineKeyboardButton(text=f"Раунд #{r['number']} (топ-{r['winners_count']} по баллам)",
                                       callback_data=f"setw_{r['id']}")])
-        await msg.answer("В каком раунде изменить количество призовых мест?", reply_markup=kb)
+        await msg.answer("В каком раунде изменить число лучших уровней баллов?", reply_markup=kb)
         await state.set_state(SetWinnersCountStates.choose_round)
     except Exception as e:
         log_handler_error(e)
@@ -675,7 +675,7 @@ async def cmd_set_winners_count(msg: Message, state: FSMContext):
 async def process_set_winners_round(call: CallbackQuery, state: FSMContext):
     await call.answer()
     await state.update_data(round_id=call.data.split("_")[1])
-    await call.message.edit_text("Введите НОВОЕ количество призовых мест (цифрой):")
+    await call.message.edit_text("Введите число лучших уровней баллов N (равные результаты проходят вместе):")
     await state.set_state(SetWinnersCountStates.enter_count)
 
 
@@ -879,7 +879,7 @@ async def process_sr_number(event: Union[CallbackQuery, Message], state: FSMCont
             await msg.answer(f"Ошибка запуска: {e}")
         await state.clear()
     else:
-        await msg.answer("Сколько будет победителей? (введите число)")
+        await msg.answer("Сколько лучших уровней баллов отбирать? Введите N; одинаковые результаты проходят вместе.")
         await state.set_state(StartRoundStates.enter_winners_count)
 
 

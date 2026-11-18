@@ -14,7 +14,7 @@ from rest_framework.permissions import AllowAny
 from .permissions import VotingPermission, bind_identity
 from .audit import record
 from . import services, tournament
-from .audit import results as round_results
+from .audit import results as round_results, displayed_participants
 from rest_framework import serializers
 
 from .models import Round, Participant, Vote, Campaign
@@ -203,7 +203,7 @@ class RoundViewSet(LockedModelViewSet):
             "round_type": round_obj.type,
             "status": round_obj.status,
             "participants": ([{'id': p['id'], 'full_name': p['name'], 'votes': p['yes'], 'order_number': p['order_number']}
-                              for p in round_results(round_obj)['participants'][:round_obj.winners_count]] if round_obj.event_stage == 'qualification' else [
+                              for p in displayed_participants(round_obj)] if round_obj.event_stage == 'qualification' else [
                 {
                     "id": p.id,
                     "full_name": p.full_name,
@@ -355,22 +355,20 @@ class CurrentRoundResults(View):
 
         if current_round:
             summary = round_results(current_round)
-            participants = summary['participants']
-            if current_round.event_stage == 'qualification':
-                participants = participants[:current_round.winners_count]
+            participants = displayed_participants(current_round, summary)
             context['stage_label'] = current_round.display_name if current_round.event_stage else ''
             context['needs_tiebreak'] = bool(summary['tie_slots'] and current_round.ended_at)
 
             results = [
                 {
-                    "position": i + 1,
+                    "position": p["position"],
                     "participant_order": p['order_number'],
                     "participant_full_name": p['name'],
                     "votes": p['yes'],
                     "winner": current_round.event_completed and p['winner'],
                     "jury_winner": p['jury_winner'],
                 }
-                for i, p in enumerate(participants)
+                for p in participants
             ]
 
             if current_round.type == "individual":

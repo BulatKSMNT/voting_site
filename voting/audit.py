@@ -33,7 +33,7 @@ def result_votes(round_obj):
 
 
 def results(round_obj):
-    from .models import Participant
+    from .models import Participant, RoundResultSnapshot
     participants = list(Participant.objects.filter(round=round_obj).annotate(
         v_count=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes")),
         no_count=Count("vote", filter=Q(vote__choice="no")),
@@ -47,10 +47,18 @@ def results(round_obj):
             p.v_count = counts.get(p.source_participant_id, {}).get('yes', 0)
             p.no_count = counts.get(p.source_participant_id, {}).get('no', 0)
         participants.sort(key=lambda p: (-p.v_count, p.order_number, p.pk))
+    # Completed transfers keep the rule recorded at the time of completion.
+    historical_exact = False
+    if round_obj.event_completed and round_obj.type != 'individual':
+        algorithm = RoundResultSnapshot.objects.filter(round_id=round_obj.pk, data__cycle=round_obj.cycle).values_list('data__algorithm', flat=True).first()
+        historical_exact = algorithm == 'event-exact-count-v1'
+    exact_count = round_obj.event_stage == 'final' or historical_exact
+    score_levels = sorted({p.v_count for p in participants}, reverse=True)
+    score_ranks = {score: i for i, score in enumerate(score_levels, 1)}
     tie_candidates, tie_slots = [], 0
     if round_obj.type == "individual":
         winner_ids = {p.pk for p in participants[:1]}
-    elif round_obj.event_stage:
+    elif exact_count:
         count = round_obj.winners_count
         winner_ids = {p.pk for p in participants[:count]}
         if len(participants) > count and participants[count - 1].v_count == participants[count].v_count:
@@ -68,12 +76,10 @@ def results(round_obj):
                 tie_candidates = [{'id': p.pk, 'name': p.full_name, 'votes': p.v_count} for p in tied]
                 tie_slots = needed
     else:
-        # Preserve the pre-existing boundary rule for manually assembled legacy rounds.
-        # SQL DISTINCT previously also included order_number from ORDER BY.
-        unique_votes = [p.v_count for p in participants][:round_obj.winners_count]
-        minimum = min(unique_votes) if unique_votes else 0
-        winner_ids = {p.pk for p in participants if p.v_count >= minimum}
-    rows = [{"id": p.pk, "name": p.full_name, "position": index, "order_number": p.order_number,
+        # Top-N means N distinct score values, including every tied participant.
+        selected_scores = set(score_levels[:round_obj.winners_count])
+        winner_ids = {p.pk for p in participants if p.v_count in selected_scores}
+    rows = [{"id": p.pk, "name": p.full_name, "position": index if exact_count or round_obj.type == "individual" else score_ranks[p.v_count], "order_number": p.order_number,
              "yes": p.v_count, "no": p.no_count, "transferred": p.transferred,
              "source_participant_id": p.source_participant_id, "auto_winner": p.pk in winner_ids,
              "jury_winner": p.pk == round_obj.jury_choice_id, "is_admin_choice": p.is_admin_choice,
@@ -85,10 +91,16 @@ def results(round_obj):
             "max_choices": round_obj.max_choices, "jury_choice_id": round_obj.jury_choice_id, "jury_name": round_obj.jury_name,
             "tie_candidates": tie_candidates, "tie_slots": tie_slots,
             "winners_count": round_obj.winners_count, "started_at": round_obj.started_at,
-            "ended_at": round_obj.ended_at, "algorithm": "event-exact-count-v1" if round_obj.event_stage else "original-v1",
+            "ended_at": round_obj.ended_at, "algorithm": "event-exact-count-v1" if historical_exact else "final-single-winner-v1" if exact_count else "score-levels-v2",
             "total_votes": votes.count(),
             "unique_voters": votes.values("user_telegram_id").distinct().count(),
             "participants": rows}
+
+
+def displayed_participants(round_obj, summary=None):
+    rows = (summary if summary is not None else results(round_obj))['participants']
+    # The individual tour projects only its leading score levels; general tours show everyone.
+    return [p for p in rows if p['auto_winner']] if round_obj.event_stage == 'qualification' else rows
 
 
 def snapshot(round_obj):

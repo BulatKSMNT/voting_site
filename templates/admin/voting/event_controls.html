@@ -2,7 +2,7 @@
 {% block content %}
 {% if round %}
 <p>{{ round.display_name }} · {{ round.get_status_display }}.
-{% if round.event_stage == 'qualification' %}В каждом раунде — один ответ ДА/НЕТ за выступающего. В следующий тур проходят топ-{{ round.winners_count }}.
+{% if round.event_stage == 'qualification' %}В каждом раунде — один ответ ДА/НЕТ за выступающего. В следующий тур проходят все участники с баллами из {{ round.winners_count }} лучших уровней.
 {% else %}Максимум выбранных участников в голосовании: {{ round.max_choices }}.{% endif %}</p>
 <p><a href="{% url 'admin:voting_round_report' round.pk %}">Результаты и история</a> · <a href="{% url 'admin:voting_campaign_event' round.campaign_id %}">Все туры мероприятия</a></p>
 {% if round.next_round_id %}<p><a href="{% url 'admin:voting_round_event' round.next_round_id %}">{% if round.event_stage == "performance" %}К туру и списку раундов{% else %}Следующий тур{% endif %}</a></p>{% endif %}

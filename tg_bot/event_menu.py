@@ -51,7 +51,7 @@ async def show_round(message, rid, full):
     stage = rd['event_stage']
     text = f"<b>{escape(rd.get('display_name', 'Раунд №' + str(rd['number'])))}</b>\nСтатус: {rd['status']}\n"
     if rd['type'] == 'standard':
-        text += f"Проходят по голосам: топ-{rd['winners_count']}\n"
+        text += f"Проходят по уровням баллов: топ-{rd['winners_count']}\n"
         if stage != 'qualification':
             text += f"Максимум выбранных участников: {rd['max_choices']}\n"
     text += '\n'.join(f"{p['position']}. {escape(p['name'][:70])} — {p['yes']} за, {p['no']} против"
@@ -73,11 +73,11 @@ async def show_round(message, rid, full):
         if stage == 'qualification' or (stage == 'semifinal' and rd['status'] == 'pending'):
             rows.append([('Добавить участника / список', f'ev_add_{rid}')])
         if rd['type'] == 'standard' and stage != 'final':
-            rows.append([('Настроить количество проходящих: топ-N', f'ev_count_{rid}')])
+            rows.append([('Настроить уровни баллов: топ-N', f'ev_count_{rid}')])
     if stage:
         if rd['status'] == 'pending':
             rows.append([('Открыть голосование ДА/НЕТ' if stage == 'performance' else 'Открыть общее голосование', f'ev_start_{rid}')])
-        elif not rd['event_completed'] and not rd['ended_at']:
+        elif not rd['event_completed'] and (not rd['ended_at'] or not summary['tie_slots']):
             label = 'Завершить этот раунд' if stage == 'performance' else 'Завершить ТУР и перенести топ-N'
             rows.append([(label, f'ev_end_{rid}')])
         if summary['tie_slots'] and rd['ended_at'] and not rd['event_completed']:
@@ -149,7 +149,7 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
         await state.clear()
         await state.update_data(campaign_id=int(cid), mode=mode)
         await state.set_state(EventStates.create_count)
-        await call.message.answer('Сколько участников проходят по голосам в следующий тур? Введите N (например, 8 для первого тура или 2 для второго). Отмена: /event.')
+        await call.message.answer('Сколько лучших уровней баллов отбирать? Введите N. Например, топ-2 при баллах 10, 10, 8, 8, 5 пропускает первых четверых. Отмена: /event.')
 
     @dp.message(EventStates.create_count, F.text, ~F.text.startswith('/'), full_access)
     async def create_save(message, state):
@@ -173,7 +173,7 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
         await state.update_data(round_id=int(rid))
         await state.set_state(EventStates.add_names if action == 'add' else EventStates.winners_count)
         text = ('Пришлите фамилию и имя или список, каждый с новой строки. Для каждого участника индивидуального тура будет создан отдельный раунд ДА/НЕТ.'
-                if action == 'add' else 'Сколько участников проходят по голосам? Введите N от 1 до 100.')
+                if action == 'add' else 'Введите число лучших уровней баллов N от 1 до 100. Все участники с одинаковыми проходными баллами проходят вместе.')
         await call.message.answer(text + ' Отмена: /event.')
 
     @dp.message(EventStates.add_names, F.text, ~F.text.startswith('/'), full_access)

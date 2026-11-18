@@ -145,7 +145,8 @@ class ConcurrencyTests(TransactionTestCase):
             responses = [f.result(timeout=10) for f in futures]
         self.assertEqual(responses[0], responses[1])
         final = Round.objects.get(event_stage='final')
-        self.assertEqual(final.participants.count(), 2)
+        # Scores 1, 1, 0 comprise two levels, so all three pass.
+        self.assertEqual(final.participants.count(), 3)
         self.assertEqual(final.votes.count(), 0)
 
     def test_starting_final_prevents_concurrent_roster_change(self):
@@ -174,4 +175,5 @@ class ConcurrencyTests(TransactionTestCase):
                 self.assertTrue(ready.wait(5))
                 start_round(final.pk)
             self.assertEqual(future.result(timeout=10), 'closed')
-        self.assertEqual(final.participants.count(), 2)
+        # Scores 1, 1, 0 comprise two levels, so all three pass.
+        self.assertEqual(final.participants.count(), 3)

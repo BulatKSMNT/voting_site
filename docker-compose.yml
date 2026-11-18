@@ -1,40 +1,68 @@
-version: '3.8'
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   db:
     image: postgres:15-alpine
     restart: always
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Europe/Moscow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  cache:
+    image: redis:7-alpine
+    restart: always
+    logging: *default-logging
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   web:
     build: .
     restart: always
+    logging: *default-logging
     command: gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 30 --keep-alive 5
     env_file:
       - .env
     environment:
       TZ: Europe/Moscow
+      CACHE_URL: redis://cache:6379/0
     ports:
       - "80:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
     volumes:
       - app_logs:/app/logs
 
   bot:
     build: .
     restart: always
+    logging: *default-logging
     command: python tg_bot/bot.py
     env_file:
       - .env
     environment:
       TZ: Europe/Moscow
+      LOG_SERVICE: bot
     depends_on:
       - web
     volumes:

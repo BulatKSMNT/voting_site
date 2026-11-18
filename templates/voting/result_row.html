@@ -1,0 +1,1 @@
+<div class="snake-item{% if row.winner %} is-winner{% endif %}"><span class="position">{{ row.position }}</span><span class="name">{{ row.participant_full_name }}{% if row.winner %} <span class="winner-mark">★</span>{% endif %}{% if row.jury_winner %} · выбор администратора{% endif %}</span><span class="votes">{{ row.votes }}</span></div>

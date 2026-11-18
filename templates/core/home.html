@@ -1,188 +1,67 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Система голосований — Главная</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <style>
-        body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
-        }
-        .hero {
-            background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=2000');
-            background-size: cover;
-            background-position: center;
-            color: white;
-            padding: 8rem 2rem;
-            text-align: center;
-            border-radius: 0 0 30px 30px;
-        }
-        .card-hover:hover {
-            transform: translateY(-8px);
-            transition: all 0.3s ease;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15) !important;
-        }
-        .stat-card {
-            border: none;
-            border-radius: 15px;
-            overflow: hidden;
-        }
-    </style>
-</head>
-<body>
-
-<!-- Hero / заголовок -->
-<div class="hero">
-    <div class="container">
-        <h1 class="display-4 fw-bold mb-3">Система голосований</h1>
-        <p class="lead mb-4">Голосования в Telegram + удобный просмотр результатов в реальном времени</p>
-        <a href="#sections" class="btn btn-lg btn-light">Перейти к разделам ↓</a>
+{% extends "base.html" %}
+{% load static %}
+{% block body_class %}home-page{% endblock %}
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+        <p class="eyebrow"><span class="small-line"></span> ГОЛОС ЗА ТЕХ, КТО ЗАЖИГАЕТ</p>
+        <h1 id="hero-title">Сцена ваша.<br><span>Выбор за вами.</span></h1>
+        <p class="hero-description">Лучшие моменты создают ведущие.<br>Кто пройдёт дальше — решает ваш голос.</p>
+        <div class="hero-actions">
+            <a class="button button-light" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Голосовать в Telegram <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="{% url 'results' %}">Смотреть результаты <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="hero-caption"><span class="status-dot"></span> Результаты обновляются в реальном времени</div>
     </div>
-</div>
+    <div class="hero-art">
+        <img class="hero-logo" src="{% static 'images/logo.webp' %}" alt="Битва ведущих. Самара. Два скрещённых микрофона." width="1000" height="1000" fetchpriority="high">
+    </div>
+</section>
 
-<!-- Основной контент -->
-<div class="container my-5" id="sections">
-
-    <!-- Статистика -->
-    <div class="row mb-5 g-4">
-        <div class="col-md-6 col-lg-3">
-            <div class="card stat-card bg-primary text-white text-center p-4 card-hover">
-                <i class="bi bi-collection fs-1 mb-3"></i>
-                <h5>Кампаний всего</h5>
-                <h2 class="mb-0">{{ total_campaigns }}</h2>
-            </div>
-        </div>
-        <div class="col-md-6 col-lg-3">
-            <div class="card stat-card bg-success text-white text-center p-4 card-hover">
-                <i class="bi bi-arrow-repeat fs-1 mb-3"></i>
-                <h5>Раундов всего</h5>
-                <h2 class="mb-0">{{ total_rounds }}</h2>
-            </div>
-        </div>
-        <div class="col-md-6 col-lg-3">
-            <div class="card stat-card bg-info text-white text-center p-4 card-hover">
-                <i class="bi bi-people fs-1 mb-3"></i>
-                <h5>Активных кампаний</h5>
-                <h2 class="mb-0">{{ active_campaigns.count }}</h2>
-            </div>
-        </div>
-        <div class="col-md-6 col-lg-3">
-            <div class="card stat-card bg-warning text-dark text-center p-4 card-hover">
-                <i class="bi bi-clock-history fs-1 mb-3"></i>
-                <h5>Последние раунды</h5>
-                <h2 class="mb-0">{{ recent_rounds.count }}</h2>
-            </div>
+<section class="participate-section" aria-labelledby="participate-title">
+    <div class="section-heading">
+        <p class="eyebrow">ИЗ ЗАЛА — В ИСТОРИЮ МЕРОПРИЯТИЯ</p>
+        <h2 id="participate-title">Ваш голос имеет значение.</h2>
+    </div>
+    <div class="participate-grid">
+        <a class="feature-card" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">
+            <div class="feature-top"><span class="step-number">01</span><span class="round-arrow" aria-hidden="true">↗</span></div>
+            <h3>Поддержите участника</h3>
+            <p>Откройте бота, выберите голосование<br class="desktop-break"> и отдайте свой голос.</p>
+            <span class="card-link">Перейти в Telegram</span>
+        </a>
+        <a class="feature-card" href="{% url 'results' %}">
+            <div class="feature-top"><span class="step-number">02</span><span class="round-arrow" aria-hidden="true">↗</span></div>
+            <h3>Следите за лидерами</h3>
+            <p>Текущий рейтинг и результаты туров.<br class="desktop-break"> Всё меняется прямо на ваших глазах.</p>
+            <span class="card-link">Открыть таблицу результатов</span>
+        </a>
+        <div class="qr-card">
+            <a href="{{ telegram_bot_url }}" aria-label="Открыть Telegram-бота" target="_blank" rel="noopener noreferrer"><img class="qr-image" src="{% static 'images/bot_qr.jpg' %}" alt="QR-код для перехода к Telegram-боту" width="150" height="150" loading="lazy"></a>
+            <div><h3>Наведите камеру</h3><p>Голосование — в вашем телефоне.</p></div>
         </div>
     </div>
+</section>
 
-    <!-- Ссылки на основные страницы -->
-    <h2 class="text-center mb-5">Разделы системы</h2>
-
-    <div class="row g-4">
-        <!-- Текущие результаты -->
-        <div class="col-md-6 col-lg-4">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center">
-                    <i class="bi bi-bar-chart-line-fill text-primary fs-1 mb-3"></i>
-                    <h5 class="card-title">Текущие результаты</h5>
-                    <p class="card-text text-muted">Просмотр активного раунда в реальном времени</p>
-                    <a href="{% url 'results' %}" class="btn btn-primary stretched-link">Открыть →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Админ-панель -->
-        <div class="col-md-6 col-lg-4">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center">
-                    <i class="bi bi-gear-fill text-danger fs-1 mb-3"></i>
-                    <h5 class="card-title">Админ-панель Django</h5>
-                    <p class="card-text text-muted">Управление кампаниями, раундами, участниками и голосами</p>
-                    <a href="{% url 'admin:index' %}" class="btn btn-outline-danger stretched-link">Войти в админку</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Список всех кампаний -->
-        <div class="col-md-6 col-lg-4">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body">
-                    <h5 class="card-title text-center mb-4"><i class="bi bi-folder2-open me-2"></i>Кампании</h5>
-                    {% if active_campaigns %}
-                        <ul class="list-group list-group-flush">
-                            {% for camp in active_campaigns %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    {{ camp.name }}
-                                    <span class="badge bg-primary rounded-pill">{{ camp.rounds.count }} раундов</span>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-center text-muted py-3">Активных кампаний пока нет</p>
-                    {% endif %}
-                    <div class="text-center mt-3">
-                        <a href="{% url 'admin:app_list' 'voting' %}" class="btn btn-sm btn-outline-primary">Управлять кампаниями</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Последние раунды -->
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">Недавние раунды</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Кампания</th>
-                                    <th>Раунд</th>
-                                    <th>Статус</th>
-                                    <th>Начало</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for r in recent_rounds %}
-                                    <tr>
-                                        <td>{{ r.campaign.name }}</td>
-                                        <td>Раунд {{ r.number }}</td>
-                                        <td>
-                                            {% if r.status == 'active' %}
-                                                <span class="badge bg-success">Активен</span>
-                                            {% elif r.status == 'published' %}
-                                                <span class="badge bg-info">Опубликован</span>
-                                            {% elif r.status == 'ended' %}
-                                                <span class="badge bg-secondary">Завершён (Скрыт)</span>
-                                            {% else %}
-                                                <span class="badge bg-warning">Ожидание</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ r.started_at|date:"d.m.Y H:i" }}</td>
-                                    </tr>
-                                {% empty %}
-                                    <tr><td colspan="4" class="text-center py-4 text-muted">Раундов пока нет</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+<section class="event-section" aria-labelledby="events-title">
+    <div class="section-heading section-heading-row"><div><p class="eyebrow">МЕРОПРИЯТИЯ</p><h2 id="events-title">На одной волне.</h2></div><span class="section-count">{{ active_campaigns.count }} активных кампаний</span></div>
+    {% if active_campaigns %}
+    <div class="campaign-list">
+        {% for camp in active_campaigns %}<div class="campaign-row"><span class="campaign-index">{{ forloop.counter|stringformat:"02d" }}</span><h3>{{ camp.name }}</h3><span class="muted">{{ camp.rounds.count }} раундов</span><a href="{% url 'results' %}" class="round-arrow" aria-label="Открыть результаты" title="Текущие результаты">↗</a></div>{% endfor %}
     </div>
+    {% else %}
+    <div class="quiet-state"><span class="quiet-icon" aria-hidden="true">↗</span><div><h3>Готовимся к следующей встрече</h3><p>Когда мероприятие начнётся, здесь появятся кампании и результаты голосования.</p></div><a class="text-link" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Бот уже на связи ↗</a></div>
+    {% endif %}
+</section>
 
-</div>
-
-<!-- Подвал -->
-<footer class="bg-dark text-white text-center py-4 mt-5">
-    <p class="mb-0">Система голосований © 2026 | Разработано для удобства</p>
-</footer>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-</body>
-</html>
+{% if recent_rounds %}
+<section class="recent-section" aria-labelledby="recent-title">
+    <div class="section-heading section-heading-row"><h2 id="recent-title">Последние раунды</h2><span class="muted">История мероприятия</span></div>
+    <div class="table-wrap">
+        <table class="event-table"><thead><tr><th>Кампания</th><th>Раунд</th><th>Статус</th><th>Начало</th></tr></thead><tbody>
+        {% for r in recent_rounds %}<tr><td>{{ r.campaign.name }}</td><td>{% if r.event_stage %}{{ r.get_event_stage_display }}{% else %}Раунд {{ r.number }}{% endif %}</td><td><span class="status-pill status-{{ r.status }}">{{ r.get_status_display }}</span></td><td>{{ r.started_at|date:"d.m.Y H:i" }}</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

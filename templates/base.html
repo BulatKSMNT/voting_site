@@ -1,0 +1,34 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#10394e">
+    <meta name="description" content="Битва ведущих в Самаре. Поддержите участников в Telegram и следите за результатами голосования.">
+    <title>{% block title %}Битва ведущих · Самара{% endblock %}</title>
+    <link rel="icon" href="{% static 'favicon.ico' %}">
+    <link rel="stylesheet" href="{% static 'css/brand.css' %}?v=20261118">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip-link" href="#main">К содержимому</a>
+<header class="site-header shell">
+    <a class="brand" href="{% url 'home' %}" aria-label="Битва ведущих — главная">
+        <img src="{% static 'images/logo.webp' %}" width="64" height="64" alt="">
+        <span>БИТВА ВЕДУЩИХ<small>САМАРА</small></span>
+    </a>
+    <nav class="site-nav" aria-label="Главная навигация">
+        <a href="{% url 'results' %}" {% block results_active %}{% endblock %}>Результаты</a>
+        <a class="nav-admin" href="{% url 'admin:index' %}">Организаторам</a>
+        <a class="button button-small button-outline" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Открыть бота <span aria-hidden="true">↗</span></a>
+    </nav>
+</header>
+<main id="main" class="shell">{% block content %}{% endblock %}</main>
+<footer class="site-footer shell">
+    <span>БИТВА ВЕДУЩИХ <span class="footer-separator">/</span> САМАРА</span>
+    <a href="{% url 'admin:index' %}">Вход для организаторов <span aria-hidden="true">↗</span></a>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

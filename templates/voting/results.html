@@ -1,590 +1,78 @@
+{% extends "base.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Битва Ведущих — Результаты</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
-    <style>
-        :root {
-            --bg-black: #070707;
-            --bg-dark: #120809;
-            --bg-card: rgba(18, 10, 12, 0.86);
-            --bg-card-2: rgba(28, 12, 15, 0.92);
-
-            --red-main: #ff244f;
-            --red-soft: #ff4d6d;
-            --red-deep: #8f1128;
-            --red-blood: #5a0d18;
-            --wine: #2a0a10;
-
-            --text-main: #f5eaea;
-            --text-soft: #d7c6c9;
-            --text-dim: #b28f96;
-
-            --border-main: rgba(255, 70, 100, 0.28);
-            --border-soft: rgba(255, 70, 100, 0.16);
-
-            --glow-main: 0 0 18px rgba(255, 36, 79, 0.38);
-            --glow-strong: 0 0 28px rgba(255, 36, 79, 0.55);
-            --shadow-main: 0 12px 36px rgba(0, 0, 0, 0.55);
-        }
-
-        html, body {
-            min-height: 100%;
-        }
-
-        body {
-            color: var(--text-main);
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            margin: 0;
-            padding: 0;
-            background:
-                radial-gradient(circle at 15% 18%, rgba(255, 40, 70, 0.16) 0%, transparent 24%),
-                radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.07) 0%, transparent 18%),
-                radial-gradient(circle at 50% 70%, rgba(120, 10, 25, 0.18) 0%, transparent 30%),
-                linear-gradient(135deg, #0a0607 0%, #120708 30%, #18090d 58%, #090909 100%);
-            background-attachment: fixed;
-            overflow-x: hidden;
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-            position: relative;
-        }
-
-        body::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            background:
-                linear-gradient(125deg, rgba(255, 25, 60, 0.18) 0%, rgba(255, 25, 60, 0.08) 10%, transparent 22%),
-                radial-gradient(circle at 50% 45%, rgba(255, 60, 90, 0.07) 0%, transparent 24%);
-            mix-blend-mode: screen;
-            opacity: 0.95;
-        }
-
-        body::after {
-            content: "";
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            background:
-                radial-gradient(circle at 50% 100%, rgba(255, 20, 60, 0.12) 0%, transparent 25%);
-            opacity: 0.8;
-        }
-
-        ::-webkit-scrollbar { display: none; width: 0; height: 0; }
-        body::-webkit-scrollbar { display: none; }
-
-        .container {
-            max-width: 1400px;
-            padding: 1.5rem 1rem;
-        }
-
-        .main-content {
-            position: relative;
-            background:
-                linear-gradient(180deg, rgba(20, 10, 12, 0.88) 0%, rgba(10, 7, 8, 0.94) 100%);
-            border-radius: 20px;
-            border: 1px solid var(--border-main);
-            box-shadow:
-                0 0 0 1px rgba(255, 50, 80, 0.05),
-                0 0 50px rgba(120, 10, 25, 0.20),
-                0 18px 50px rgba(0, 0, 0, 0.62);
-            padding: 2rem 1.5rem;
-            margin-bottom: 3rem;
-            min-height: 100vh;
-            overflow: hidden;
-        }
-
-        .main-content::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            background:
-                radial-gradient(circle at 12% 8%, rgba(255, 60, 90, 0.07) 0%, transparent 18%),
-                radial-gradient(circle at 85% 20%, rgba(255, 255, 255, 0.03) 0%, transparent 15%),
-                radial-gradient(circle at 48% 100%, rgba(255, 30, 65, 0.05) 0%, transparent 20%);
-        }
-
-        .header-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-            padding: 1.5rem 0 2rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .logo-box {
-            width: 96px;
-            height: 96px;
-            background: rgba(255, 255, 255, 0.02);
-            padding: 4px;
-            border-radius: 12px;
-            box-shadow:
-                0 0 0 1px rgba(255, 65, 95, 0.18),
-                0 0 14px rgba(255, 42, 79, 0.22);
-            border: 1px solid rgba(255, 60, 90, 0.55);
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-        .logo-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            border-radius: 8px;
-        }
-
-
-        .qr-box {
-            width: 110px;
-            height: 110px;
-            background: white;
-            padding: 8px;
-            border-radius: 14px;
-            box-shadow:
-                0 0 0 2px rgba(255, 65, 95, 0.16),
-                0 0 20px rgba(255, 42, 79, 0.32),
-                0 0 36px rgba(255, 42, 79, 0.14);
-            border: 2px solid rgba(255, 60, 90, 0.72);
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-        .qr-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-            border-radius: 8px;
-        }
-
-        .header {
-            text-align: center;
-            background:
-                linear-gradient(180deg, rgba(35, 12, 16, 0.92) 0%, rgba(12, 7, 8, 0.96) 100%);
-            border-radius: 18px;
-            border: 2px solid rgba(255, 50, 85, 0.72);
-            box-shadow:
-                0 0 0 1px rgba(255, 50, 85, 0.08),
-                0 0 28px rgba(255, 36, 79, 0.16),
-                0 10px 28px rgba(0, 0, 0, 0.55);
-            padding: 1.3rem 2.7rem;
-            flex: 1;
-            max-width: 720px;
-            min-width: 320px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            background:
-                linear-gradient(90deg, transparent 0%, rgba(255, 60, 90, 0.04) 50%, transparent 100%);
-        }
-
-        .header h1 {
-            font-size: 2.8rem;
-            font-weight: 900;
-            margin: 0;
-            color: #ff3b60;
-            letter-spacing: 0.04em;
-            text-shadow:
-                0 0 8px rgba(255, 59, 96, 0.35),
-                0 0 18px rgba(255, 59, 96, 0.30);
-            line-height: 1.05;
-        }
-
-        .header .total {
-            font-size: 1.3rem;
-            color: #ffd1d8;
-            text-shadow: 0 0 10px rgba(255, 90, 120, 0.25);
-            margin-top: 0.7rem;
-            font-weight: 600;
-        }
-
-        .results-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0;
-            margin-top: 1rem;
-            background:
-                linear-gradient(180deg, rgba(21, 10, 12, 0.94) 0%, rgba(10, 8, 8, 0.96) 100%);
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow:
-                0 0 0 1px rgba(255, 55, 85, 0.05),
-                0 14px 40px rgba(0, 0, 0, 0.58);
-            border: 1px solid rgba(255, 60, 90, 0.12);
-            position: relative;
-            z-index: 2;
-        }
-
-        .results-grid::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            background:
-                linear-gradient(180deg, rgba(255, 60, 90, 0.03) 0%, transparent 22%, transparent 78%, rgba(255, 60, 90, 0.03) 100%);
-        }
-
-        .individual-grid {
-            grid-template-columns: 1fr;
-            max-width: 1000px;
-            margin: 2rem auto 0;
-        }
-
-        .column {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .snake-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-            padding: 1.4rem 1.8rem;
-            border-bottom: 1px solid rgba(255, 70, 100, 0.09);
-            transition: background 0.25s ease, transform 0.2s ease;
-            position: relative;
-        }
-
-        .snake-item::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 18%;
-            bottom: 18%;
-            width: 3px;
-            border-radius: 10px;
-            background: linear-gradient(180deg, rgba(255, 70, 100, 0.75), rgba(120, 15, 28, 0.4));
-            box-shadow: 0 0 12px rgba(255, 50, 80, 0.18);
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-
-        .snake-item:hover {
-            background: rgba(255, 35, 70, 0.08);
-        }
-
-        .snake-item:hover::before {
-            opacity: 1;
-        }
-
-        .snake-item:nth-child(even) {
-            border-left: 1px solid rgba(255, 70, 100, 0.08);
-        }
-
-        .position {
-            width: 70px;
-            font-weight: 800;
-            color: #ff9cab;
-            text-shadow: 0 0 10px rgba(255, 80, 110, 0.18);
-            text-align: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-
-        .name {
-            flex: 1;
-            font-size: 1.35rem;
-            padding: 0 1.2rem;
-            color: var(--text-main);
-            font-weight: 500;
-        }
-
-        .votes {
-            font-weight: 800;
-            color: #ff4568;
-            text-shadow:
-                0 0 8px rgba(255, 70, 104, 0.25),
-                0 0 14px rgba(255, 70, 104, 0.14);
-            min-width: 120px;
-            text-align: right;
-            font-size: 1.45rem;
-            flex-shrink: 0;
-        }
-
-        .bottom-controls {
-            background:
-                linear-gradient(180deg, rgba(10, 7, 8, 0.96) 0%, rgba(16, 8, 10, 0.98) 100%);
-            backdrop-filter: blur(8px);
-            border-top: 1px solid rgba(255, 70, 100, 0.14);
-            padding: 1.7rem 1rem 1.8rem;
-            text-align: center;
-            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35);
-        }
-
-        .back-btn {
-            display: inline-block;
-            padding: 1rem 2.8rem;
-            font-size: 1.3rem;
-            font-weight: 700;
-            background: linear-gradient(45deg, #ff2a56, #961327);
-            border: 1px solid rgba(255, 90, 120, 0.35);
-            border-radius: 50px;
-            color: white;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            box-shadow:
-                0 0 22px rgba(255, 42, 86, 0.28),
-                0 8px 22px rgba(0, 0, 0, 0.35);
-            margin-bottom: 1.5rem;
-        }
-
-        .back-btn:hover {
-            transform: translateY(-2px);
-            color: white;
-            box-shadow:
-                0 0 34px rgba(255, 42, 86, 0.42),
-                0 12px 28px rgba(0, 0, 0, 0.38);
-            background: linear-gradient(45deg, #ff476d, #b11631);
-        }
-
-        .rounds-section h3 {
-            color: #ffb5c1;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
-            text-shadow: 0 0 10px rgba(255, 80, 110, 0.15);
-            font-weight: 700;
-        }
-
-        .btn-custom {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid rgba(255, 70, 100, 0.45);
-            color: #ff8ea2;
-            transition: all 0.25s ease;
-            min-width: 150px;
-            margin: 0 0.4rem 0.6rem;
-            border-radius: 14px;
-            padding: 0.7rem 1rem;
-            box-shadow: inset 0 0 0 1px rgba(255, 70, 100, 0.04);
-        }
-
-        .btn-custom:hover {
-            background: rgba(255, 45, 80, 0.10);
-            color: #ffffff;
-            border-color: rgba(255, 90, 120, 0.72);
-            box-shadow: 0 0 18px rgba(255, 50, 80, 0.15);
-        }
-
-        .btn-custom-active {
-            background: linear-gradient(45deg, #ff2e58, #8f1426);
-            border: 1px solid rgba(255, 100, 130, 0.45);
-            color: white;
-            box-shadow:
-                0 0 20px rgba(255, 45, 80, 0.28),
-                0 6px 18px rgba(0, 0, 0, 0.22);
-            font-weight: 700;
-            border-radius: 14px;
-            padding: 0.7rem 1rem;
-        }
-
-        @media (max-width: 992px) {
-            .results-grid, .individual-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .snake-item:nth-child(even) {
-                border-left: none;
-            }
-
-            .logo-box, .qr-box {
-                position: static;
-                margin: 1rem auto;
-                width: 150px;
-                height: 150px;
-            }
-
-            .header h1 {
-                font-size: 2.3rem;
-            }
-
-            .header {
-                padding: 1.5rem 1.8rem;
-                max-width: 95%;
-            }
-
-            .name {
-                font-size: 1.2rem;
-                padding: 0 0.8rem;
-            }
-
-            .votes {
-                min-width: 90px;
-                font-size: 1.25rem;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .snake-item {
-                padding: 1rem 1rem;
-            }
-
-            .position {
-                width: 52px;
-                font-size: 1.2rem;
-            }
-
-            .name {
-                font-size: 1rem;
-            }
-
-            .votes {
-                font-size: 1.1rem;
-                min-width: 70px;
-            }
-
-            .header h1 {
-                font-size: 1.9rem;
-            }
-
-            .back-btn {
-                width: 100%;
-                max-width: 420px;
-            }
-        }
-    </style>
-
-</head>
-<body>
-
-<div class="main-content">
-    <div class="header-wrapper">
-        <div class="logo-box"><img src="{% static 'images/logo.png' %}" alt="Логотип"></div>
-        <div class="header">
-            <h1>БИТВА ВЕДУЩИХ</h1>
-            {% if round %}
-                <!-- ДОБАВЛЯЕМ СЧЕТЧИК СЮДА -->
-                <div class="total">Всего голосов: <span id="total-votes-count">{{ total_votes }}</span></div>
-            {% else %}
-                <div class="total text-warning">Активного раунда сейчас нет</div>
-            {% endif %}
-        </div>
-        <div class="qr-box"><img src="{% static 'images/bot_qr.jpg' %}" alt="QR-код бота"></div>
+{% block title %}Результаты · Битва ведущих · Самара{% endblock %}
+{% block body_class %}results-page{% endblock %}
+{% block results_active %}aria-current="page"{% endblock %}
+{% block content %}
+<section class="scoreboard" aria-labelledby="results-title">
+    <div class="header results-heading">
+        <div><p class="eyebrow">БИТВА ВЕДУЩИХ · САМАРА</p><h1 id="results-title">{% if stage_label %}{{ stage_label }}{% else %}Результаты голосования{% endif %}</h1>
+        {% if round %}<p class="campaign-name">{{ round.campaign.name }}{% if not round.event_stage %} · Раунд №{{ round.number }}{% endif %}</p>{% endif %}</div>
+        <img class="heading-brand" src="{% static 'images/logo.webp' %}" width="125" height="125" alt="Битва ведущих. Самара.">
     </div>
-
     {% if round %}
-        {% if round.type == "individual" %}
-            <div class="results-grid individual-grid">
-                <!-- ДОБАВЛЕН ID left-column -->
-                <div class="column" id="left-column">
-                    {% for row in left_column %}
-                    <div class="snake-item">
-                        <span class="position">{{ row.position }}</span>
-                        <span class="name">{{ row.participant_full_name }}</span>
-                        <span class="votes">{{ row.votes }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        {% else %}
-            <div class="results-grid">
-                <!-- ДОБАВЛЕН ID left-column -->
-                <div class="column" id="left-column">
-                    {% for row in left_column %}
-                    <div class="snake-item">
-                        <span class="position">{{ row.position }}</span>
-                        <span class="name">{{ row.participant_full_name }}</span>
-                        <span class="votes">{{ row.votes }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                <!-- ДОБАВЛЕН ID right-column -->
-                <div class="column" id="right-column">
-                    {% for row in right_column %}
-                    <div class="snake-item">
-                        <span class="position">{{ row.position }}</span>
-                        <span class="name">{{ row.participant_full_name }}</span>
-                        <span class="votes">{{ row.votes }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        {% endif %}
-    {% endif %}
-</div>
-
-<div class="bottom-controls">
-    <a href="{% url 'home' %}" class="back-btn"><i class="bi bi-arrow-left-circle-fill"></i> Вернуться на главную</a>
-    {% if active_rounds %}
-    <div class="rounds-section">
-        <h3>Активные раунды</h3>
-        <div class="d-flex flex-wrap justify-content-center gap-3">
-            {% for r in active_rounds %}
-            <a href="?round_id={{ r.id }}" class="btn {% if r.id == selected_round_id %}btn-custom-active{% else %}btn-custom{% endif %}">
-                Раунд №{{ r.number }} {% if r.type == "individual" %}(индивид.){% endif %}
-                {% if r.id == selected_round_id %}<span class="ms-1">★</span>{% endif %}
-            </a>
-            {% endfor %}
+    <div class="results-utility"><span class="live-indicator"><span class="status-dot"></span> Обновляется автоматически</span><span class="vote-total">Всего голосов <strong id="total-votes-count" aria-live="polite">{{ total_votes }}</strong></span></div>
+    <div class="tie-notice" id="tie-notice" {% if not needs_tiebreak %}hidden{% endif %}>Равенство голосов: ожидается решение главного администратора.</div>
+    <div class="score-table">
+        <div class="score-table-head {% if round.type == 'individual' %}individual-head{% endif %}" aria-hidden="true"><div><span>Место / Участник</span><span>Голоса</span></div>{% if round.type != 'individual' %}<div><span>Место / Участник</span><span>Голоса</span></div>{% endif %}</div>
+        <div class="results-grid {% if round.type == 'individual' %}individual-grid{% endif %}" aria-label="Рейтинг участников">
+            <div class="column" id="left-column">{% for row in left_column %}{% include "voting/result_row.html" %}{% endfor %}</div>
+            {% if round.type != 'individual' %}<div class="column" id="right-column">{% for row in right_column %}{% include "voting/result_row.html" %}{% endfor %}</div>{% endif %}
         </div>
+        <div class="score-placeholder" id="score-placeholder" {% if left_column or right_column %}hidden{% endif %}>Участники скоро появятся. Таблица обновится автоматически.</div>
     </div>
+    <div class="results-bottom"><p class="results-note">Каждый голос приближает участников к следующему этапу. Поддержите своего фаворита в Telegram.</p><div class="vote-via-qr"><a href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer" aria-label="Открыть бота"><img class="qr-image" src="{% static 'images/bot_qr.jpg' %}" width="77" height="77" alt="QR-код Telegram-бота"></a><div><a href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Ваш голос — в Telegram ↗</a><p>Наведите камеру на QR-код</p></div></div></div>
+    {% else %}
+    <div class="empty-scoreboard"><img src="{% static 'images/logo.webp' %}" alt="" width="170" height="170"><h2>Скоро начнём</h2><p>Сейчас активного голосования нет. Когда организатор откроет раунд, результаты появятся здесь автоматически.</p><a class="button button-light" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Перейти к боту <span aria-hidden="true">↗</span></a></div>
     {% endif %}
-</div>
-
-<!-- УМНЫЙ AJAX-СКРИПТ -->
+    {% if active_rounds %}<section class="rounds-section" aria-labelledby="rounds-title"><h2 id="rounds-title">Туры мероприятия</h2><nav class="round-links" aria-label="Выбор раунда">{% for r in active_rounds %}<a class="round-link {% if r.id == selected_round_id %}is-selected{% endif %}" href="?round_id={{ r.id }}" {% if r.id == selected_round_id %}aria-current="page"{% endif %}>{% if r.event_stage %}{{ r.get_event_stage_display }}{% else %}Раунд №{{ r.number }}{% if r.type == 'individual' %} · Индивидуальный{% endif %}{% endif %}</a>{% endfor %}</nav></section>{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
 <script>
-    // Узнаем, какой раунд сейчас открыт (из URL)
     const urlParams = new URLSearchParams(window.location.search);
-    urlParams.set('ajax', '1'); // Говорим серверу отдавать JSON
+    urlParams.set('ajax', '1');
+    const initialRoundId = {{ selected_round_id|default:'null' }};
+    const initialRoundType = '{{ round.type|default:'' }}';
     const ajaxUrl = window.location.pathname + '?' + urlParams.toString();
 
-    // Функция сборки куска HTML для одного участника
-    const buildRowHTML = (row) => `
-        <div class="snake-item">
-            <span class="position">${row.position}</span>
-            <span class="name">${row.participant_full_name}</span>
-            <span class="votes">${row.votes}</span>
-        </div>
-    `;
+    // Participant names are always text, including during live updates.
+    const buildRow = (row) => {
+        const item = document.createElement('div');
+        item.className = 'snake-item' + (row.winner ? ' is-winner' : '');
+        const label = row.participant_full_name + (row.winner ? ' ★' : '') + (row.jury_winner ? ' · выбор администратора' : '');
+        for (const [name, value] of [['position', row.position], ['name', label], ['votes', row.votes]]) {
+            const cell = document.createElement('span');
+            cell.className = name;
+            cell.textContent = value;
+            item.appendChild(cell);
+        }
+        return item;
+    };
 
     async function fetchLiveUpdates() {
         try {
             const response = await fetch(ajaxUrl);
             if (!response.ok) return;
-
             const data = await response.json();
-
-            // Обновляем левую колонку
+            if (data.round_id !== initialRoundId || data.round_type !== initialRoundType) {
+                window.location.reload();
+                return;
+            }
             const leftCol = document.getElementById('left-column');
-            if (leftCol && data.left_column) {
-                leftCol.innerHTML = data.left_column.map(buildRowHTML).join('');
-            }
-
-            // Обновляем правую колонку (если есть)
+            if (leftCol && data.left_column) leftCol.replaceChildren(...data.left_column.map(buildRow));
             const rightCol = document.getElementById('right-column');
-            if (rightCol && data.right_column) {
-                rightCol.innerHTML = data.right_column.map(buildRowHTML).join('');
-            }
-
+            if (rightCol && data.right_column) rightCol.replaceChildren(...data.right_column.map(buildRow));
             const totalCounter = document.getElementById('total-votes-count');
-            if (totalCounter && data.total_votes !== undefined) {
-                totalCounter.innerText = data.total_votes;
-            }
-
+            if (totalCounter && data.total_votes !== undefined) totalCounter.textContent = data.total_votes;
+            const tieNotice = document.getElementById('tie-notice');
+            if (tieNotice) tieNotice.hidden = !data.needs_tiebreak;
+            const placeholder = document.getElementById('score-placeholder');
+            if (placeholder) placeholder.hidden = Boolean(data.left_column.length + data.right_column.length);
         } catch (error) {
-            console.error("Ошибка Live-обновления:", error);
+            console.error('Ошибка обновления результатов:', error);
         }
     }
-
-    // Запускаем тихий опрос сервера каждые 2 секунды (2000 мс)
     setInterval(fetchLiveUpdates, 2000);
 </script>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+{% endblock %}

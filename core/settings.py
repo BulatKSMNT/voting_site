@@ -1,7 +1,6 @@
 """
 Django settings for core project.
 """
-import logging
 from pathlib import Path
 from decouple import config
 
@@ -17,7 +16,8 @@ SECRET_KEY = config('SECRET_KEY')
 
 DEBUG = config("DEBUG", cast=bool, default=False)
 
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", default="127.0.0.1,localhost")
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", default="127.0.0.1,localhost,web")
+TELEGRAM_BOT_USERNAME = config('TELEGRAM_BOT_USERNAME', default='host_battle_bot').lstrip('@')
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", default="")
 
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", cast=bool, default=False)
@@ -30,13 +30,6 @@ if config("USE_X_FORWARDED_PROTO", cast=bool, default=False):
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
-
-
-class SkipAjaxFilter(logging.Filter):
-    def filter(self, record):
-        if record.levelno == logging.INFO and 'ajax=1' in record.getMessage():
-            return False
-        return True
 
 
 INSTALLED_APPS = [
@@ -52,6 +45,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'core.middleware.RequestContextMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -72,6 +66,7 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'core.context_processors.brand',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
@@ -140,61 +135,24 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-    ],
+    'DEFAULT_THROTTLE_CLASSES': ['voting.throttling.ActorThrottle'],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '60/min',
-        'user': '300/min',
-    }
+        'anon': config('API_ANON_RATE', default='60/min'),
+        'read': config('API_READ_RATE', default='120/min'),
+        'vote': config('API_VOTE_RATE', default='60/min'),
+        'manage': config('API_MANAGE_RATE', default='120/min'),
+    },
+    'EXCEPTION_HANDLER': 'voting.audit.api_exception_handler',
 }
 
+DJANGO_API_TOKEN = config('DJANGO_API_TOKEN', default='')
+FULL_ADMIN_IDS = {int(value) for value in env_list('FULL_ADMIN_IDS')}
+LIMITED_ADMIN_IDS = {int(value) for value in env_list('LIMITED_ADMIN_IDS')}
+CACHE_URL = config('CACHE_URL', default='')
+if CACHE_URL:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': CACHE_URL}}
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-        },
-    },
-    'filters': {
-        'skip_ajax': {
-            '()': 'core.settings.SkipAjaxFilter',
-        }
-    },
-    'handlers': {
-        'file': {
-            'level': 'INFO',
-            'filters': ['skip_ajax'],
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': BASE_DIR / 'logs/django.log',
-            'maxBytes': 1024 * 1024 * 5,
-            'backupCount': 3,
-            'formatter': 'verbose',
-            'encoding': 'utf-8',
-        },
-        'console': {
-            'level': 'INFO',
-            'filters': ['skip_ajax'],
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-    },
-    'loggers': {
-        'django.server': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'django.request': {
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-    },
-}
+from core.observability import logging_config
+LOGGING = logging_config(config('LOG_SERVICE', default='web'))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

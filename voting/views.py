@@ -1,29 +1,30 @@
 import csv
 import io
-import logging
 
 from django.views import View
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q, Max
-from django.utils import timezone
 
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny
+from .permissions import VotingPermission, bind_identity
+from .audit import record
+from . import services, tournament
+from .audit import results as round_results
+from rest_framework import serializers
 
 from .models import Round, Participant, Vote, Campaign
 from .serializers import (
     ParticipantSerializer,
     VoteCreateSerializer,
     CampaignSerializer,
+    CampaignAccessSerializer,
     RoundSerializer,
 )
-
-logger = logging.getLogger(__name__)
-
 
 def safe_csv_cell(value):
     if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
@@ -31,20 +32,109 @@ def safe_csv_cell(value):
     return value
 
 
-class CampaignViewSet(viewsets.ModelViewSet):
+class LockedModelViewSet(viewsets.ModelViewSet):
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action in {"update", "partial_update", "destroy"} and self.queryset.model is not Participant:
+            queryset = queryset.select_for_update()
+        return queryset
+
+
+class CampaignViewSet(LockedModelViewSet):
     queryset = Campaign.objects.filter(is_active=True)
     serializer_class = CampaignSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [VotingPermission]
+
+    def perform_destroy(self, instance):
+        if instance.rounds.exclude(event_stage='').exists():
+            raise serializers.ValidationError('Архивируйте кампанию через is_active; история мероприятия сохраняется.')
+        return super().perform_destroy(instance)
+
+    @action(detail=True, methods=['get'])
+    def event(self, request, pk=None):
+        campaign = self.get_object()
+        return Response({'campaign_id': campaign.pk, 'name': campaign.name, 'rounds': tournament.event_state(campaign.pk)})
+
+    @action(detail=True, methods=['post'])
+    def prepare_event(self, request, pk=None):
+        campaign = self.get_object()
+        return Response(tournament.prepare_event(campaign.pk, request.data.get('names')))
+
+    @action(detail=True, methods=['patch'])
+    @transaction.atomic
+    def access(self, request, pk=None):
+        """Merge list changes atomically; ordinary PATCH replaces the whole list."""
+        changes = CampaignAccessSerializer(data=request.data)
+        changes.is_valid(raise_exception=True)
+        campaign = self.get_object()
+        campaign = Campaign.objects.select_for_update().get(pk=campaign.pk)
+        data = changes.validated_data
+        fields = set()
+        if 'access_mode' in data:
+            campaign.access_mode = data['access_mode']
+            fields.add('access_mode')
+        if 'operation' in data:
+            ids = set(campaign.allowed_telegram_ids)
+            if data['operation'] == 'add':
+                ids.update(data['telegram_ids'])
+            else:
+                ids.difference_update(data['telegram_ids'])
+            campaign.allowed_telegram_ids = sorted(ids)
+            fields.add('allowed_telegram_ids')
+        campaign.save(update_fields=fields)
+        return Response(self.get_serializer(campaign).data)
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def active_list(self, request):
-        return Response({"campaigns": self.get_serializer(self.queryset, many=True).data})
+        return Response({"campaigns": list(self.queryset.values("id", "name", "order_number", "is_active"))})
 
 
-class RoundViewSet(viewsets.ModelViewSet):
+class RoundViewSet(LockedModelViewSet):
     queryset = Round.objects.all()
     serializer_class = RoundSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [VotingPermission]
+
+    def perform_destroy(self, instance):
+        if instance.event_stage:
+            raise serializers.ValidationError('Туры подготовленного мероприятия нельзя удалять по отдельности.')
+        return super().perform_destroy(instance)
+
+    @action(detail=True, methods=['post'])
+    def event_start(self, request, pk=None):
+        return Response(tournament.start_round(self.get_object().pk))
+
+    @action(detail=True, methods=['post'])
+    def event_finish(self, request, pk=None):
+        return Response(tournament.finish_round(self.get_object().pk))
+
+    @action(detail=True, methods=['get'])
+    def event_results(self, request, pk=None):
+        return Response(round_results(self.get_object()))
+
+    @action(detail=True, methods=['post'])
+    def jury(self, request, pk=None):
+        class ChoiceSerializer(serializers.Serializer):
+            participant_id = serializers.IntegerField(min_value=1, allow_null=True, required=False, default=None)
+            full_name = serializers.CharField(max_length=200, allow_blank=True, required=False, default='')
+        data = ChoiceSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response(tournament.set_jury(self.get_object().pk, **data.validated_data))
+
+    @action(detail=True, methods=['post'])
+    def resolve_tie(self, request, pk=None):
+        class TieSerializer(serializers.Serializer):
+            participant_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False)
+        data = TieSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return Response(tournament.resolve_tie(self.get_object().pk, data.validated_data['participant_ids']))
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
@@ -72,15 +162,19 @@ class RoundViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def active_info(self, request):
-        round_obj = Round.objects.filter(is_current=True, status__in=["active", "published"]).first()
+        round_obj = Round.objects.select_related('campaign').filter(is_current=True, status__in=["active", "published"]).first()
 
         if not round_obj:
-            return Response({"error": "Нет активных раундов"}, status=404)
+            request._request.activity_reason = "no_active_round"
+            return Response({"error": "Нет активных раундов", "code": "no_active_round"}, status=404)
 
         user_votes = []
-        user_id = request.GET.get("user_id")
+        voter_id = None
+        actor = bind_identity(request)
+        user_id = actor["actor_id"] if actor["source"] == "bot" else request.GET.get("user_id")
 
-        if request.user and request.user.is_authenticated and user_id:
+        if request.user.is_authenticated and user_id and str(user_id).isdigit() and (actor["source"] == "bot" or actor["actor_role"] == "full"):
+            voter_id = int(user_id)
             user_votes = Vote.objects.filter(round=round_obj, user_telegram_id=user_id)
 
         participants = Participant.objects.filter(round=round_obj).annotate(
@@ -89,10 +183,17 @@ class RoundViewSet(viewsets.ModelViewSet):
 
         return Response({
             "round_id": round_obj.id,
+            "campaign_id": round_obj.campaign_id,
+            "access_mode": round_obj.campaign.access_mode,
+            "can_vote": round_obj.campaign.can_vote(voter_id),
+            "max_choices": round_obj.max_choices,
+            "remaining_choices": max(0, round_obj.max_choices - len(user_votes)),
+            "event_stage": round_obj.event_stage,
             "round_name": str(round_obj),
             "round_type": round_obj.type,
             "status": round_obj.status,
-            "participants": [
+            "participants": ([{'id': p['id'], 'full_name': p['name'], 'votes': p['yes'], 'order_number': p['order_number']}
+                              for p in round_results(round_obj)['participants'][:8]] if round_obj.event_stage == 'qualification' else [
                 {
                     "id": p.id,
                     "full_name": p.full_name,
@@ -100,7 +201,7 @@ class RoundViewSet(viewsets.ModelViewSet):
                     "order_number": p.order_number
                 }
                 for p in participants
-            ],
+            ]),
             "user_votes": [
                 {"participant_id": v.participant_id, "choice": v.choice}
                 for v in user_votes
@@ -108,11 +209,14 @@ class RoundViewSet(viewsets.ModelViewSet):
         })
 
 
-    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['patch'], permission_classes=[VotingPermission])
+    @transaction.atomic
     def update_winners_count(self, request, pk=None):
         """Изменяет количество призовых мест в раунде"""
         try:
-            round_obj = Round.objects.get(pk=pk)
+            round_obj = Round.objects.select_for_update().get(pk=pk)
+            if round_obj.event_stage:
+                raise serializers.ValidationError('Число победителей в турах мероприятия задано схемой 8 → 2 → 1.')
             new_count = request.data.get("winners_count")
 
             if not new_count or int(new_count) < 1:
@@ -124,144 +228,15 @@ class RoundViewSet(viewsets.ModelViewSet):
             return Response({"message": f"✅ В Раунде #{round_obj.number} теперь {new_count} призовых мест!"})
         except Round.DoesNotExist:
             return Response({"error": "Раунд не найден."}, status=404)
-        except ValueError:
+        except (ValueError, TypeError):
             return Response({"error": "Количество должно быть числом."}, status=400)
 
     @action(detail=True, methods=['post'])
     def end_and_transfer(self, request, pk=None):
-        action_type = request.data.get("action_type", "auto_individual")
-        target_round_id = request.data.get("target_round_id")
-        keep_votes = request.data.get("keep_votes", True)
-
         try:
-            with transaction.atomic():
-                round_obj = Round.objects.select_for_update().get(pk=pk)
-
-                if round_obj.type == "individual":
-                    if round_obj.status == "ended":
-                        return Response({"error": "Уже завершен"}, status=400)
-
-                    round_obj.status = "ended"
-                    round_obj.is_current = False
-                    round_obj.ended_at = timezone.now()
-                    round_obj.save()
-
-                    p = Participant.objects.filter(round=round_obj).first()
-                    if not p:
-                        return Response({
-                            "is_individual": True,
-                            "message": "Индив. раунд завершен (участников не было)."
-                        })
-
-                    if target_round_id:
-                        # Ищем среди active И published
-                        target_round = Round.objects.get(
-                            id=target_round_id,
-                            campaign=round_obj.campaign,
-                            type="standard",
-                            status__in=["active", "published"]
-                        )
-                    else:
-                        target_round = Round.objects.filter(
-                            campaign=round_obj.campaign,
-                            type="standard",
-                            status__in=["active", "published"]
-                        ).first()
-
-                        if not target_round:
-                            max_num = Round.objects.filter(campaign=round_obj.campaign).aggregate(m=Max('number'))['m'] or 0
-                            target_round = Round.objects.create(
-                                campaign=round_obj.campaign,
-                                number=max_num + 1,
-                                type="standard",
-                                status="published",  # <--- СОЗДАЕМ ОПУБЛИКОВАННЫМ
-                                winners_count=3
-                            )
-
-                    yes_votes = Vote.objects.filter(participant=p, choice="yes")
-                    new_p = Participant.objects.create(
-                        round=target_round,
-                        full_name=p.full_name,
-                        description=f"Из индив. раунда #{round_obj.number}"
-                    )
-
-                    Vote.objects.bulk_create([
-                        Vote(round=target_round, participant=new_p, user_telegram_id=v.user_telegram_id)
-                        for v in yes_votes
-                    ], ignore_conflicts=True)
-
-                    return Response({
-                        "is_individual": True,
-                        "winners": [
-                            {
-                                "id": p.id,
-                                "name": p.full_name,
-                                "votes": yes_votes.count()
-                            }
-                        ],
-                        "message": (
-                            f"🏁 Раунд завершен!\n"
-                            f"Участник <b>{p.full_name}</b> "
-                            f"({yes_votes.count()} голосов «ЗА») перенесен в Стандартный Раунд #{target_round.number}."
-                        )
-                    })
-
-                elif action_type == "end_standard":
-                    round_obj.status = "published"
-                    round_obj.is_current = False
-                    round_obj.ended_at = timezone.now()
-                    round_obj.save()
-
-                    participants = Participant.objects.filter(round=round_obj).annotate(
-                        v_count=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
-                    ).order_by("-v_count", "order_number")
-
-                    unique_votes = list(participants.values_list("v_count", flat=True).distinct())[:round_obj.winners_count]
-                    min_votes = min(unique_votes) if unique_votes else 0
-                    winners = participants.filter(v_count__gte=min_votes)
-
-                    winners_data = [{"id": w.id, "name": w.full_name, "votes": w.v_count} for w in winners]
-                    return Response({
-                        "is_individual": False,
-                        "winners": winners_data,
-                        "message": f"Раунд #{round_obj.number} завершен! Результаты на экране."
-                    })
-
-                elif action_type == "transfer_standard":
-                    target_round = Round.objects.get(id=target_round_id, type="standard", status__in=["active", "published"])
-                    if target_round.id == round_obj.id:
-                        return Response({"error": "Нельзя переносить участников в тот же самый раунд."}, status=400)
-                    if target_round.campaign_id != round_obj.campaign_id:
-                        return Response({"error": "Нельзя переносить участников в раунд другой кампании."}, status=400)
-
-                    winners_ids = request.data.get("winners_ids", [])
-                    winners = Participant.objects.filter(id__in=winners_ids, round=round_obj)
-
-                    transfer_count = 0
-                    for p in winners:
-                        new_p = Participant.objects.create(round=target_round, full_name=p.full_name)
-                        transfer_count += 1
-
-                        if keep_votes:
-                            voters = Vote.objects.filter(participant=p).filter(
-                                Q(choice="yes") | Q(choice__isnull=True)
-                            )
-                            Vote.objects.bulk_create([
-                                Vote(round=target_round, participant=new_p, user_telegram_id=v.user_telegram_id)
-                                for v in voters
-                            ], ignore_conflicts=True)
-
-                    return Response({
-                        "message": f"✅ Перенесено {transfer_count} финалистов в Раунд #{target_round.number}."
-                    })
-
-                return Response({"error": "Неизвестный action_type"}, status=400)
-
+            return Response(services.end_and_transfer(pk, request.data))
         except Round.DoesNotExist:
-            return Response({"error": "Раунд не найден."}, status=404)
-        except Exception:
-            logger.exception("end_and_transfer failed")
-            return Response({"error": "Внутренняя ошибка сервера"}, status=500)
+            return Response({"error": "Раунд не найден.", "code": "round_not_found"}, status=404)
 
     @action(detail=False, methods=['get'])
     def export_csv(self, request):
@@ -273,11 +248,9 @@ class RoundViewSet(viewsets.ModelViewSet):
         rounds = Round.objects.all().select_related('campaign').order_by('campaign__order_number', 'number')
 
         for r in rounds:
-            participants = Participant.objects.filter(round=r).annotate(
-                votes=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
-            ).order_by("-votes", "order_number")
+            participants = round_results(r)['participants']
 
-            if not participants.exists():
+            if not participants:
                 writer.writerow([
                     safe_csv_cell(r.campaign.name),
                     f"№{r.number}",
@@ -296,17 +269,18 @@ class RoundViewSet(viewsets.ModelViewSet):
                     r.get_type_display(),
                     r.get_status_display(),
                     i,
-                    safe_csv_cell(p.full_name),
-                    p.votes
+                    safe_csv_cell(p['name']),
+                    p['yes']
                 ])
 
+        record("export.created", details={"format": "legacy_csv", "scope": "all_rounds"})
         return Response({"csv_content": output.getvalue()})
 
 
 class VoteViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = Vote.objects.all()
     serializer_class = VoteCreateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [VotingPermission]
     http_method_names = ['post']
 
     def create(self, request, *args, **kwargs):
@@ -314,19 +288,25 @@ class VoteViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            serializer.save()
-            return Response({"status": "Голос учтён"}, status=status.HTTP_201_CREATED)
+            vote = serializer.save()
+            return Response({"status": "Голос учтён", "vote_id": vote.pk}, status=status.HTTP_201_CREATED)
         except IntegrityError:
+            record("vote.rejected", round_obj=serializer.validated_data["round"], outcome="rejected", reason_code="duplicate")
             return Response(
-                {"error": "Вы уже проголосовали за этого участника."},
+                {"code": "duplicate", "error": "Вы уже проголосовали за этого участника."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
 
-class ParticipantViewSet(viewsets.ModelViewSet):
+class ParticipantViewSet(LockedModelViewSet):
     queryset = Participant.objects.all()
     serializer_class = ParticipantSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [VotingPermission]
+
+    def perform_destroy(self, instance):
+        if instance.round.event_stage:
+            raise serializers.ValidationError('Состав тура мероприятия нельзя удалять вручную.')
+        return super().perform_destroy(instance)
 
     def create(self, request, *args, **kwargs):
         round_id = request.data.get("round")
@@ -365,7 +345,9 @@ class CurrentRoundResults(View):
                 status__in=["active", "published"]
             ).first()
 
-        active_rounds = Round.objects.filter(status__in=["active", "published"]).order_by("started_at")
+        if current_round and current_round.event_stage == 'performance':
+            current_round = current_round.next_round
+        active_rounds = Round.objects.filter(status__in=["active", "published"]).exclude(event_stage='performance').order_by("started_at")
 
         context = {
             "round": current_round,
@@ -377,16 +359,21 @@ class CurrentRoundResults(View):
         }
 
         if current_round:
-            participants = Participant.objects.filter(round=current_round).annotate(
-                votes=Count("vote", filter=Q(vote__choice__isnull=True) | Q(vote__choice="yes"))
-            ).order_by("-votes", "order_number")
+            summary = round_results(current_round)
+            participants = summary['participants']
+            if current_round.event_stage == 'qualification':
+                participants = participants[:8]
+            context['stage_label'] = current_round.get_event_stage_display() if current_round.event_stage else ''
+            context['needs_tiebreak'] = bool(summary['tie_slots'] and current_round.ended_at)
 
             results = [
                 {
                     "position": i + 1,
-                    "participant_order": p.order_number,
-                    "participant_full_name": p.full_name,
-                    "votes": p.votes
+                    "participant_order": p['order_number'],
+                    "participant_full_name": p['name'],
+                    "votes": p['yes'],
+                    "winner": current_round.event_completed and p['winner'],
+                    "jury_winner": p['jury_winner'],
                 }
                 for i, p in enumerate(participants)
             ]
@@ -398,10 +385,13 @@ class CurrentRoundResults(View):
                 context["left_column"] = results[:mid]
                 context["right_column"] = results[mid:]
 
-            context["total_votes"] = Vote.objects.filter(round=current_round).count()
+            context["total_votes"] = summary['total_votes']
 
         if request.GET.get("ajax") == "1":
             return JsonResponse({
+                "round_id": current_round.pk if current_round else None,
+                "round_type": current_round.type if current_round else "",
+                "needs_tiebreak": context.get('needs_tiebreak', False),
                 "left_column": context["left_column"],
                 "right_column": context["right_column"],
                 "total_votes": context["total_votes"]

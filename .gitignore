@@ -158,3 +158,8 @@ dmypy.json
 
 # Visual Studio Code
 .history
+# Structured runtime logs and rotated archives
+logs/
+
+# Per-machine Docker overrides
+/docker-compose.override.yml

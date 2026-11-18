@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+{% if round %}
+<p>{{ round.get_event_stage_display }} · {{ round.get_status_display }} · максимум выбранных участников: {{ round.max_choices }}</p>
+<p><a href="{% url 'admin:voting_round_report' round.pk %}">Результаты и история</a> · <a href="{% url 'admin:voting_campaign_event' round.campaign_id %}">Все туры мероприятия</a></p>
+{% if round.next_round_id %}<p><a href="{% url 'admin:voting_round_event' round.next_round_id %}">Следующий тур / таблица первого тура</a></p>{% endif %}
+<p>Дополнительный победитель: {{ round.jury_choice|default:round.jury_name|default:"не выбран" }}. Выбор не добавляет голоса.</p>
+{% if summary.tie_slots and round.ended_at %}<p><strong>Голосование закрыто. Нужно выбрать {{ summary.tie_slots }} из участников с равными голосами.</strong></p>{% endif %}
+<table><thead><tr><th>Место</th><th>Участник</th><th>За</th><th>Против</th></tr></thead><tbody>
+{% for p in summary.participants %}<tr><td>{{ p.position }}</td><td>{{ p.name }}{% if round.event_completed and p.winner %} ★{% endif %}</td><td>{{ p.yes }}</td><td>{{ p.no }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+{% if rounds %}<ul>{% for r in rounds %}<li><a href="{% url 'admin:voting_round_event' r.pk %}">{{ r.get_event_stage_display }} · №{{ r.number }} · {{ r.get_status_display }}{% if r.event_stage == 'performance' %} · {{ r.participants.first.full_name }}{% endif %}</a></li>{% endfor %}</ul>{% endif %}
+{% if form %}<form method="post">{% csrf_token %}{{ form.as_p }}<input type="submit" value="Выполнить"></form>{% endif %}
+{% endblock %}

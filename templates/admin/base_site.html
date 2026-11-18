@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{% block title %}{{ title }} · Битва ведущих{% endblock %}
+{% block branding %}<div class="admin-brand"><a href="{% url 'admin:index' %}"><img src="{% static 'images/logo.webp' %}" width="62" height="62" alt=""><span>БИТВА ВЕДУЩИХ<small>САМАРА · ОРГАНИЗАТОРАМ</small></span></a></div>{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="icon" href="{% static 'favicon.ico' %}">{% endblock %}
+{% block responsive %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/admin-brand.css' %}?v=20261118">{% endblock %}
+{% block nav-global %}{% endblock %}

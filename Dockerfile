@@ -4,7 +4,6 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV SECRET_KEY=dummy-build-secret-key
 ENV TZ=Europe/Moscow
 
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
@@ -18,4 +17,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN mkdir -p logs staticfiles
-RUN python manage.py collectstatic --noinput
+RUN SECRET_KEY=dummy-build-secret-key python manage.py collectstatic --noinput

@@ -73,6 +73,15 @@ class EventTests(TestCase):
         self.assertNotContains(page, '★')
         self.assertEqual(page.context['right_column'][-1]['participant_full_name'], people[3].full_name)
         outcome = self.action(rd, 'event_finish')
+        _, closed_rows = self.board(rd)
+        self.assertEqual([r['participant_full_name'] for r in closed_rows],
+                         [people[0].full_name, people[1].full_name, people[3].full_name])
+        self.assertEqual([r['votes'] for r in closed_rows], [8, 6, 4])
+        page = self.client.get(f'/voting/results/?round_id={rd.pk}')
+        self.assertEqual(len(page.context['left_column'] + page.context['right_column']), 3)
+        rd.refresh_from_db()
+        self.assertEqual(len(results(rd)['participants']), 8)
+        self.assertEqual(len(RoundResultSnapshot.objects.filter(round_id=rd.pk).first().data['participants']), 8)
         final = Round.objects.get(pk=outcome['next_round_id'])
         finalist = final.participants.get(is_admin_choice=True)
         self.action(final, 'event_start')
@@ -136,12 +145,15 @@ class EventTests(TestCase):
         final = Round.objects.get(pk=response['next_round_id'])
         self.assertEqual((final.participants.count(), final.votes.count(), final.max_choices), (3, 0, 1))
         self.assertEqual(list(final.participants.values_list('full_name', flat=True)), [names[0], names[1], names[7]])
-        # The site retains all eight in the closed second tour, while the final waits to start.
-        self.assertEqual(len(self.board(semi)[1]), 8)
+        # The closed second tour shows only the transferred finalists.
+        self.assertEqual(len(self.board(semi)[1]), 3)
         original_snapshot = RoundResultSnapshot.objects.filter(round_id=semi.pk).first()
         self.action(semi, 'jury', {'full_name': 'Новый Финалист'})
         self.assertEqual(final.participants.count(), 3)
         self.assertTrue(final.participants.filter(full_name='Новый Финалист', is_admin_choice=True).exists())
+        closed_rows = self.board(semi)[1]
+        self.assertEqual(len(closed_rows), 3)
+        self.assertEqual((closed_rows[-1]['participant_full_name'], closed_rows[-1]['votes']), ('Новый Финалист', 0))
         self.assertEqual(semi.votes.count(), 6)
         original_snapshot.refresh_from_db()
         self.assertEqual(original_snapshot.data['jury_choice_id'], people[7].pk)
@@ -150,6 +162,8 @@ class EventTests(TestCase):
         self.vote(finalists[2], 1000)
         self.assertEqual(self.vote(finalists[0], 1000, expected=400)['code'], 'vote_limit_reached')
         self.vote(finalists[2], 1001)
+        # Votes cast in the final must not appear in the previous tour.
+        self.assertEqual(self.board(semi)[1][-1]['votes'], 0)
         self.vote(finalists[0], 1002)
         self.action(semi, 'jury', {'participant_id': people[6].pk}, expected=400)
         outcome = self.action(final, 'event_finish')
@@ -193,6 +207,7 @@ class EventTests(TestCase):
         final = Round.objects.get(pk=response['next_round_id'])
         self.assertEqual(set(final.participants.values_list('source_participant_id', flat=True)), {p.pk for p in people[:4]})
         self.assertEqual(final.votes.count(), 0)
+        self.assertEqual(len(self.board(rd)[1]), 4)
         self.assertEqual(self.action(rd, 'event_finish'), response)
         self.action(rd, 'resolve_tie', {'participant_ids': [people[0].pk]}, expected=400)
         # The extra administrator choice is still independent of score levels.

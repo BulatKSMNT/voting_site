@@ -99,8 +99,25 @@ def results(round_obj):
 
 def displayed_participants(round_obj, summary=None):
     rows = (summary if summary is not None else results(round_obj))['participants']
-    # The individual tour projects only its leading score levels; general tours show everyone.
-    return [p for p in rows if p['auto_winner']] if round_obj.event_stage == 'qualification' else rows
+    if round_obj.event_stage == 'qualification':
+        return [p for p in rows if p['auto_winner']]
+    if round_obj.event_stage == 'semifinal' and round_obj.event_completed:
+        selected = [p for p in rows if p['winner']]
+        if round_obj.jury_name and round_obj.next_round_id:
+            # A finalist entered by name has no votes in this source tour.
+            # Include the actual transferred entrant without creating a source participant.
+            from .models import Participant
+            extra = Participant.objects.filter(round_id=round_obj.next_round_id,
+                full_name=round_obj.jury_name, is_admin_choice=True, source_participant_id__isnull=True).first()
+            if extra:
+                selected.append({'id': extra.pk, 'name': extra.full_name,
+                    'position': max((p['position'] for p in selected), default=0) + 1,
+                    'order_number': extra.order_number, 'yes': 0, 'no': 0, 'transferred': 0,
+                    'source_participant_id': None, 'auto_winner': False, 'jury_winner': True,
+                    'is_admin_choice': True, 'winner': True})
+        return selected
+    # While voting is open, and in the final, show the entire roster.
+    return rows
 
 
 def snapshot(round_obj):

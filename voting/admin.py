@@ -86,7 +86,7 @@ class CampaignAdmin(AuditedAdmin):
             except ValidationError as exc:
                 form.add_error(None, str(exc.detail))
         return TemplateResponse(request, 'admin/voting/event_controls.html', {
-            **self.admin_site.each_context(request), 'title': f'Мероприятие: {campaign.name}', 'form': form if not campaign.rounds.exclude(event_stage='').filter(event_completed=False).exists() else None,
+            **self.admin_site.each_context(request), 'title': f'Мероприятие: {campaign.name}', 'form': form,
             'rounds': rounds, 'opts': self.model._meta,
         })
 

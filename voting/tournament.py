@@ -48,8 +48,6 @@ def create_tour(campaign_id, mode='individual', winners_count=8, names=None):
         raise ValidationError('Выберите индивидуальный или общий тур.')
     validate_count(winners_count)
     names = clean_names([] if names is None else names, allow_empty=True)
-    if campaign.rounds.exclude(event_stage='').filter(event_completed=False).exists():
-        raise ValidationError('Сначала завершите текущий тур. Следующий будет подготовлен автоматически.')
     stage = {'individual': 'qualification', 'standard': 'semifinal'}[mode]
     board = Round.objects.create(campaign=campaign, type='standard', event_stage=stage,
                                  status='published' if mode == 'individual' else 'pending',
@@ -239,8 +237,15 @@ def finish_round(pk):
         target.save(update_fields=['is_current'])
     elif rd.event_stage in {'qualification', 'semifinal'}:
         stage = 'semifinal' if rd.event_stage == 'qualification' else 'final'
-        target = Round.objects.create(campaign=rd.campaign, type='standard', event_stage=stage, status='pending',
-                                      winners_count=2 if stage == 'semifinal' else 1, max_choices=3 if stage == 'semifinal' else 1)
+        # Reuse a later, empty tour prepared by an administrator. Never overwrite a roster.
+        target = Round.objects.select_for_update(of=('self',)).filter(
+            campaign=rd.campaign, type='standard', event_stage=stage, status='pending',
+            event_completed=False, ended_at__isnull=True, number__gt=rd.number,
+            participants__isnull=True, votes__isnull=True, previous_rounds__isnull=True,
+        ).order_by('number').first()
+        if target is None:
+            target = Round.objects.create(campaign=rd.campaign, type='standard', event_stage=stage, status='pending',
+                                          winners_count=2 if stage == 'semifinal' else 1, max_choices=3 if stage == 'semifinal' else 1)
         for p in auto:
             Participant.objects.create(round=target, full_name=p['name'], source_participant_id=p['id'])
         if stage == 'final':

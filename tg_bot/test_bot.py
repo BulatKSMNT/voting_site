@@ -272,16 +272,17 @@ class BotTests(IsolatedAsyncioTestCase):
             await module.show_campaign(message, 1, True)
         buttons = message.answer.call_args.kwargs['reply_markup'].inline_keyboard
         callbacks = {button.callback_data for row in buttons for button in row}
-        self.assertIn('ev_create_individual_1', callbacks)
-        self.assertIn('ev_create_standard_1', callbacks)
+        self.assertIn('ev_new_1', callbacks)
+        self.assertNotIn('ev_create_individual_1', callbacks)
         legacy = {'id': 5, 'name': 'Раунд: Иванов Иван', 'stage': '', 'completed': False, 'status': 'active'}
         message.reset_mock()
         with patch.object(self.bot.api, 'request', new_callable=AsyncMock,
                           return_value={'name': 'Event', 'rounds': [legacy]}):
             await module.show_campaign(message, 1, True)
         buttons = message.answer.call_args.kwargs['reply_markup'].inline_keyboard
-        self.assertEqual(buttons[0][0].callback_data, 'ev_round_5')
-        self.assertIn('Иванов Иван', buttons[0][0].text)
+        self.assertEqual(buttons[0][0].callback_data, 'ev_new_1')
+        self.assertEqual(buttons[1][0].callback_data, 'ev_round_5')
+        self.assertIn('Иванов Иван', buttons[1][0].text)
 
     async def test_create_tour_and_add_one_person_fsm(self):
         module = importlib.import_module('event_menu')
@@ -301,7 +302,7 @@ class BotTests(IsolatedAsyncioTestCase):
 
     async def test_new_tour_controls_require_full_administrator(self):
         for actor in (202, 303):
-            for value in ('ev_create_individual_1', 'ev_create_standard_1', 'ev_add_1', 'ev_count_1'):
+            for value in ('ev_new', 'ev_new_1', 'ev_create_individual_1', 'ev_create_standard_1', 'ev_add_1', 'ev_count_1'):
                 api = await self.dispatch(value, actor=actor, private=True)
                 api.assert_not_awaited()
             for state in (self.bot.EventStates.create_count, self.bot.EventStates.add_names, self.bot.EventStates.winners_count):
@@ -310,3 +311,21 @@ class BotTests(IsolatedAsyncioTestCase):
                         await self.send_text('3', actor=actor, state=state,
                                              state_data={'campaign_id': 1, 'mode': 'individual', 'round_id': 1})
                 api.assert_not_awaited()
+
+    async def test_create_button_visible_during_unfinished_tour_and_type_selection(self):
+        module = importlib.import_module('event_menu')
+        message = AsyncMock()
+        rd = {'id': 5, 'name': 'Тур 1', 'stage': 'qualification', 'completed': False, 'status': 'published'}
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'name': 'Event', 'rounds': [rd]}):
+            await module.show_campaign(message, 1, True)
+        self.assertEqual(message.answer.call_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data, 'ev_new_1')
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'campaigns': [{'id': 1, 'name': 'Event'}]}):
+            with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                await self.send_text('/event')
+            self.assertEqual(telegram.call_args.args[1].reply_markup.inline_keyboard[0][0].callback_data, 'ev_new')
+        handler = next(h.callback for h in self.bot.dp.callback_query.handlers if h.callback.__name__ == 'choose_tour_type')
+        call, state = AsyncMock(), AsyncMock()
+        call.data = 'ev_new_1'
+        await handler(call, state)
+        buttons = call.message.answer.call_args.kwargs['reply_markup'].inline_keyboard
+        self.assertEqual([row[0].callback_data for row in buttons[:2]], ['ev_create_standard_1', 'ev_create_individual_1'])

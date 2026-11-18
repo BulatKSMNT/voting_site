@@ -35,9 +35,8 @@ async def show_campaign(message, cid, full):
             continue
         mark = '✓' if rd['completed'] else '▶' if rd['status'] == 'active' else '·'
         rows.append([(f"{mark} {rd['name']}", f"ev_round_{rd['id']}")])
-    if full and not any(r['stage'] and not r['completed'] for r in data['rounds']):
-        rows.extend([[('Создать тур: индивидуальные раунды ДА/НЕТ', f'ev_create_individual_{cid}')],
-                     [('Создать тур: общее голосование', f'ev_create_standard_{cid}')]])
+    if full:
+        rows.insert(0, [('Создать тур', f'ev_new_{cid}')])
         if not data['rounds']:
             rows.append([('Загрузить сразу список выступающих', f'ev_prepare_{cid}')])
     for start in range(0, max(len(rows), 1), 50):
@@ -109,6 +108,8 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
         try:
             data = await api.request('GET', 'campaigns/active_list')
             rows = [[(c['name'], f"ev_camp_{c['id']}")] for c in data['campaigns']]
+            if is_full_admin(message.from_user.id):
+                rows.insert(0, [('Создать тур', 'ev_new')])
             await message.answer('Выберите мероприятие. Для нового сначала /create_campaign.', reply_markup=keyboard(rows))
         except api.APIError as exc:
             await error(message, exc)
@@ -139,6 +140,33 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
         await state.clear()
         try:
             await show_round(call.message, int(call.data.split('_')[2]), is_full_admin(call.from_user.id))
+        except api.APIError as exc:
+            await error(call.message, exc)
+
+    @dp.callback_query(F.data.regexp(r'^ev_new(_[0-9]+)?$'), full_access)
+    async def choose_tour_type(call, state):
+        await call.answer()
+        await state.clear()
+        try:
+            parts = call.data.split('_')
+            if len(parts) == 3:
+                cid = int(parts[2])
+            else:
+                data = await api.request('GET', 'campaigns/active_list')
+                campaigns = data['campaigns']
+                if not campaigns:
+                    await call.message.answer('Сначала создайте мероприятие: /create_campaign.')
+                    return
+                if len(campaigns) != 1:
+                    await call.message.answer('В каком мероприятии создать тур?', reply_markup=keyboard([
+                        [(c['name'], f"ev_new_{c['id']}")] for c in campaigns]))
+                    return
+                cid = campaigns[0]['id']
+            await call.message.answer('Выберите тип тура:', reply_markup=keyboard([
+                [('Общий', f'ev_create_standard_{cid}')],
+                [('Индивидуальный (ДА/НЕТ)', f'ev_create_individual_{cid}')],
+                [('Назад к мероприятию', f'ev_camp_{cid}')],
+            ]))
         except api.APIError as exc:
             await error(call.message, exc)
 

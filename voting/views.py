@@ -1,8 +1,9 @@
 import csv
 import io
+import base64
 
 from django.views import View
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q, Max
@@ -14,6 +15,7 @@ from rest_framework.permissions import AllowAny
 from .permissions import VotingPermission, bind_identity
 from .audit import record
 from . import services, tournament
+from .reports import campaign_archive, consistent_read
 from .audit import results as round_results, displayed_participants
 from rest_framework import serializers
 
@@ -52,6 +54,19 @@ class CampaignViewSet(LockedModelViewSet):
     queryset = Campaign.objects.filter(is_active=True)
     serializer_class = CampaignSerializer
     permission_classes = [VotingPermission]
+
+    @action(detail=False, methods=['get'])
+    def report_choices(self, request):
+        return Response({'campaigns': list(Campaign.objects.order_by('-order_number').values('id', 'name', 'is_active'))})
+
+    @action(detail=True, methods=['get'])
+    def report(self, request, pk=None):
+        with consistent_read():
+            campaign = get_object_or_404(Campaign, pk=pk)
+            content = campaign_archive(campaign)
+        record('export.created', campaign_id=campaign.pk, details={'format': 'campaign_archive'})
+        return Response({'filename': f'Отчет-мероприятие-{campaign.pk}.zip',
+                         'content_base64': base64.b64encode(content).decode('ascii')})
 
     def perform_destroy(self, instance):
         if instance.rounds.exclude(event_stage='').exists():

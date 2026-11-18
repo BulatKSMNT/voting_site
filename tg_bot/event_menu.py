@@ -108,8 +108,6 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
         try:
             data = await api.request('GET', 'campaigns/active_list')
             rows = [[(c['name'], f"ev_camp_{c['id']}")] for c in data['campaigns']]
-            if is_full_admin(message.from_user.id):
-                rows.insert(0, [('Создать тур', 'ev_new')])
             await message.answer('Выберите мероприятие. Для нового сначала /create_campaign.', reply_markup=keyboard(rows))
         except api.APIError as exc:
             await error(message, exc)

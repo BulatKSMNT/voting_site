@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncio
+import base64
 import logging
 import logging.config
 from html import escape
@@ -227,7 +228,7 @@ async def cmd_help(message: Message):
             "▪️ /set_winners_count — Настроить топ-N по уровням баллов\n"
             "▪️ /del_participant — ❌ Удалить участника\n"
             "▪️ /resurrect_round — 🧟‍♂️ Восстановить раунд\n"
-            "▪️ /export — 📊 Скачать Excel-отчет\n"
+            "▪️ /export — 📊 Отчёт по мероприятию: результаты и голоса\n"
         )
     await message.answer(text, parse_mode="HTML")
 
@@ -784,17 +785,39 @@ async def process_resurrect(call: CallbackQuery):
 @dp.message(Command("export"), full_access)
 async def cmd_export(msg: Message):
     if not is_full_admin(msg.from_user.id): return
-    wait_msg = await msg.answer("⏳ Собираю данные из базы, формирую Excel-файл...")
+    if msg.chat.type != 'private':
+        await msg.answer('Отчёт с Telegram ID доступен в личном чате с ботом. Отправьте там /export.')
+        return
     try:
-        data = await api.request("GET", "rounds/export_csv", is_admin=True)
-        document = BufferedInputFile(data.get("csv_content", "").encode('utf-8-sig'),
-                                     filename="Отчет_Битва_Ведущих.csv")
-        await msg.answer_document(document, caption="📊 Полный отчет по всем кампаниям и раундам.")
-        await wait_msg.delete()
+        data = await api.request('GET', 'campaigns/report_choices', is_admin=True)
+        rows = [[InlineKeyboardButton(text=c['name'] + (' (архив)' if not c['is_active'] else ''),
+                                      callback_data=f"report_campaign_{c['id']}")] for c in data['campaigns']]
+        if not rows:
+            await msg.answer('Мероприятий пока нет.')
+        for start in range(0, len(rows), 50):
+            await msg.answer('Выберите мероприятие для отчёта:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows[start:start+50]))
     except Exception as e:
         log_handler_error(e)
-        await msg.answer(f"❌ Ошибка при выгрузке отчета: {e}")
-        await wait_msg.delete()
+        await msg.answer('Не удалось открыть список отчётов. Попробуйте /export ещё раз.')
+
+
+@dp.callback_query(F.data.regexp(r'^report_campaign_[0-9]+$'), full_access)
+async def export_campaign(call: CallbackQuery):
+    if call.message.chat.type != 'private':
+        await call.answer('Откройте личный чат с ботом и отправьте /export.', show_alert=True)
+        return
+    await call.answer('Собираю отчёт…')
+    try:
+        data = await api.request('GET', f"campaigns/{int(call.data.split('_')[-1])}/report", is_admin=True)
+        document = BufferedInputFile(base64.b64decode(data['content_base64']), filename=data['filename'])
+        await call.message.answer_document(document, caption=(
+            '📊 Отчёт по выбранному мероприятию.\n'
+            'Результаты.csv — итоги по турам.\n'
+            'Голоса.csv — Telegram ID, участник, выбор и время.\n'
+            'Данные.json — данные для пересчёта и снимки завершений.'))
+    except Exception as e:
+        log_handler_error(e)
+        await call.message.answer('Не удалось выгрузить отчёт. Попробуйте /export ещё раз.')
 
 
 @dp.message(Command("create_campaign"), full_access)

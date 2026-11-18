@@ -322,10 +322,37 @@ class BotTests(IsolatedAsyncioTestCase):
         with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'campaigns': [{'id': 1, 'name': 'Event'}]}):
             with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
                 await self.send_text('/event')
-            self.assertEqual(telegram.call_args.args[1].reply_markup.inline_keyboard[0][0].callback_data, 'ev_new')
+            buttons = telegram.call_args.args[1].reply_markup.inline_keyboard
+            self.assertEqual([b.callback_data for row in buttons for b in row], ['ev_camp_1'])
         handler = next(h.callback for h in self.bot.dp.callback_query.handlers if h.callback.__name__ == 'choose_tour_type')
         call, state = AsyncMock(), AsyncMock()
         call.data = 'ev_new_1'
         await handler(call, state)
         buttons = call.message.answer.call_args.kwargs['reply_markup'].inline_keyboard
         self.assertEqual([row[0].callback_data for row in buttons[:2]], ['ev_create_standard_1', 'ev_create_individual_1'])
+
+    async def test_export_chooses_one_campaign_and_sends_archive(self):
+        import base64
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={
+                'campaigns': [{'id': 7, 'name': 'Мероприятие', 'is_active': True}]} ) as api:
+            with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                await self.send_text('/export')
+            api.assert_awaited_once_with('GET', 'campaigns/report_choices', is_admin=True)
+            self.assertEqual(telegram.call_args.args[1].reply_markup.inline_keyboard[0][0].callback_data, 'report_campaign_7')
+        call = AsyncMock()
+        call.data = 'report_campaign_7'
+        call.message.chat.type = 'private'
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={
+                'filename': 'report.zip', 'content_base64': base64.b64encode(b'archive bytes').decode()}) as api:
+            await self.bot.export_campaign(call)
+        api.assert_awaited_once_with('GET', 'campaigns/7/report', is_admin=True)
+        self.assertEqual(call.message.answer_document.call_args.args[0].data, b'archive bytes')
+        api = await self.dispatch('report_campaign_7', actor=101, private=False)
+        api.assert_not_awaited()
+        for actor in (202, 303):
+            api = await self.dispatch('report_campaign_7', actor=actor, private=True)
+            api.assert_not_awaited()
+            with patch.object(self.bot.api, 'request', new_callable=AsyncMock) as api:
+                with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True):
+                    await self.send_text('/export', actor=actor)
+            api.assert_not_awaited()

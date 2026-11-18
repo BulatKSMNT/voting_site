@@ -1,26 +1,38 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<p><a href="{% url 'admin:voting_round_change' round.pk %}">Настройки раунда</a> · <a href="?">Текущее состояние</a></p>
-<p>Кампания: {{ summary.campaign }}. Раунд №{{ summary.round_number }}. Статус: {{ summary.status }}.</p>
-<p>{% if selected_snapshot %}<strong>Сохранённый итог №{{ selected_snapshot.version }} от {{ selected_snapshot.created_at }}</strong>{% else %}<strong>Текущее состояние (может меняться)</strong>{% endif %}</p>
-<p>Всего голосов: {{ summary.total_votes }}. Уникальных голосовавших: {{ summary.unique_voters }}.</p>
-<h2>Снимки при завершении</h2>
-<ul>{% for item in snapshots %}<li><a href="?snapshot={{ item.pk }}">Версия {{ item.version }} — {{ item.created_at }}</a></li>{% empty %}<li>Снимков пока нет. Для старых раундов доступны текущие данные, исторический итог автоматически не восстанавливается.</li>{% endfor %}</ul>
+<p><a href="{% url 'admin:voting_round_event' round.pk %}">К управлению туром / раундом</a> · <a href="?">Текущее состояние</a></p>
+<p><strong>{{ summary.campaign }} · {{ summary.round_name|default:round.display_name }}</strong></p>
+<p>{% if selected_snapshot %}Сохранённый итог №{{ selected_snapshot.version }} от {{ selected_snapshot.created_at }}{% else %}Текущее состояние на момент открытия страницы. До завершения тура результаты предварительные.{% endif %}</p>
+<p>Принято голосов: <strong>{{ summary.total_votes }}</strong>. Голосовавших: <strong>{{ summary.unique_voters }}</strong>.</p>
+<p><a class="button" href="?export=backup{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Скачать отчёт этого тура / раунда (ZIP)</a>
+ · <a href="{% url 'admin:voting_campaign_report' round.campaign_id %}">Скачать всё мероприятие</a></p>
+<p>В архиве: результаты, голоса с Telegram ID и данные JSON для пересчёта.</p>
 <h2>Результаты</h2>
-<p><a href="?export=results{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Скачать эти результаты CSV</a></p>
-<table><thead><tr><th>Место</th><th>Участник</th><th>За</th><th>Против</th><th>Перенесено</th><th>Победитель</th></tr></thead><tbody>
-{% for p in summary.participants %}<tr><td>{{ p.position }}</td><td>{{ p.name }}</td><td>{{ p.yes }}</td><td>{{ p.no }}</td><td>{{ p.transferred }}</td><td>{{ p.winner|yesno:"Да,Нет" }}</td></tr>{% endfor %}
+<p><a href="?export=results{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Результаты CSV</a></p>
+{% if summary.jury_name %}<p>Дополнительный финалист, добавленный администратором: <strong>{{ summary.jury_name }}</strong>.</p>{% endif %}
+<table><thead><tr><th>Место</th><th>Участник</th><th>За</th><th>Против</th><th>Проходит по баллам</th><th>Решение администратора</th></tr></thead><tbody>
+{% for p in summary.participants %}<tr><td>{{ p.position }}</td><td>{{ p.name }}</td><td>{{ p.yes }}</td><td>{{ p.no }}</td><td>{{ p.auto_winner|yesno:"Да,Нет" }}</td><td>{% if p.jury_winner %}Дополнительный победитель{% elif p.is_admin_choice %}Добавлен администратором{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="6">Участники пока не добавлены.</td></tr>{% endfor %}
 </tbody></table>
-<h2>Голоса — текущее состояние</h2>
-<p><a href="?export=votes">Скачать голоса CSV</a></p>
-<table><thead><tr><th>ID</th><th>Участник</th><th>Telegram ID</th><th>Выбор</th><th>Время</th><th>Исходный голос ID</th></tr></thead><tbody>
-{% for v in votes %}<tr><td>{{ v.pk }}</td><td>{{ v.participant.full_name }}</td><td>{{ v.user_telegram_id }}</td><td>{{ v.choice|default:"yes" }}</td><td>{{ v.created_at }}</td><td>{{ v.source_vote_id|default:"—" }}</td></tr>{% endfor %}
+<h2>Кто за кого проголосовал</h2>
+{% if votes_available %}
+<p><a href="?export=votes{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Голоса CSV — весь список</a>. Время указано в UTC.</p>
+<table><thead><tr><th>Telegram ID</th><th>Участник</th><th>Выбор</th><th>Время (UTC)</th></tr></thead><tbody>
+{% for v in votes %}<tr><td>{{ v.user_telegram_id|stringformat:"d" }}</td><td>{{ v.participant_name }}</td><td>{{ v.choice_label }}{% if v.source_vote_id %} (перенесён){% endif %}</td><td>{{ v.display_time }}</td></tr>{% empty %}<tr><td colspan="4">Голосов пока нет.</td></tr>{% endfor %}
 </tbody></table>
-<p>Страница {{ votes.number }} / {{ votes.paginator.num_pages }} {% if votes.has_previous %}<a href="?votes_page={{ votes.previous_page_number }}">Назад</a>{% endif %} {% if votes.has_next %}<a href="?votes_page={{ votes.next_page_number }}">Далее</a>{% endif %}</p>
-<h2>История действий и отказов</h2>
-<p><a href="?export=events">Скачать историю CSV</a></p>
+<p>Страница {{ votes.number }} / {{ votes.paginator.num_pages }} {% if votes.has_previous %}<a href="?votes_page={{ votes.previous_page_number }}{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Назад</a>{% endif %} {% if votes.has_next %}<a href="?votes_page={{ votes.next_page_number }}{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Далее</a>{% endif %}</p>
+{% else %}
+<p><strong>В этом старом снимке сохранены только итоговые числа, без отдельных голосов.</strong> Доступные сейчас голоса можно посмотреть в <a href="?">текущем состоянии</a>; они могут отличаться от исторического итога.</p>
+{% endif %}
+<details><summary>Снимки при завершении</summary>
+<p>Каждая версия хранит состояние на момент завершения. Выберите версию для просмотра и скачивания.</p>
+<ul>{% for item in snapshots %}<li><a href="?snapshot={{ item.pk }}">Версия {{ item.version }} — {{ item.created_at }}</a></li>{% empty %}<li>Снимков пока нет.</li>{% endfor %}</ul>
+</details>
+<details><summary>Техническая история действий и отказов</summary>
+<p>Это журнал диагностики. Отказы не являются принятыми голосами и не входят в результаты.</p>
+<p><a href="?export=events">Скачать техническую историю CSV</a></p>
 <table><thead><tr><th>Время</th><th>Событие</th><th>Источник / инициатор</th><th>Результат</th><th>Request ID</th><th>Данные</th></tr></thead><tbody>
 {% for e in events %}<tr><td>{{ e.created_at }}</td><td>{{ e.event }}</td><td>{{ e.source }} / {{ e.actor_id|default:"—" }}</td><td>{{ e.outcome }} {{ e.reason_code }}</td><td>{{ e.request_id }}</td><td><details><summary>Подробнее</summary><pre>{{ e.details }}</pre></details></td></tr>{% endfor %}
 </tbody></table>
-<p>Страница {{ events.number }} / {{ events.paginator.num_pages }} {% if events.has_previous %}<a href="?events_page={{ events.previous_page_number }}">Назад</a>{% endif %} {% if events.has_next %}<a href="?events_page={{ events.next_page_number }}">Далее</a>{% endif %}</p>
+<p>Страница {{ events.number }} / {{ events.paginator.num_pages }} {% if events.has_previous %}<a href="?events_page={{ events.previous_page_number }}{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Назад</a>{% endif %} {% if events.has_next %}<a href="?events_page={{ events.next_page_number }}{% if selected_snapshot %}&amp;snapshot={{ selected_snapshot.pk }}{% endif %}">Далее</a>{% endif %}</p>
+</details>
 {% endblock %}

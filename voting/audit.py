@@ -105,9 +105,10 @@ def displayed_participants(round_obj, summary=None):
 
 def snapshot(round_obj):
     from .models import RoundResultSnapshot
+    from .reports import round_payload
     version = (RoundResultSnapshot.objects.filter(round_id=round_obj.pk).aggregate(v=Max("version"))["v"] or 0) + 1
     return RoundResultSnapshot.objects.create(campaign_id=round_obj.campaign_id, round_id=round_obj.pk,
-                                               version=version, data=results(round_obj))
+                                               version=version, data=round_payload(round_obj))
 
 
 def vote_event(vote, name="vote.accepted"):

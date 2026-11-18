@@ -12,9 +12,10 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from core.observability import context
 from .models import Campaign, Round, Participant, Vote, AuditEvent, RoundResultSnapshot, RoundOperation
-from .audit import record, results, result_votes
+from .audit import record, results
 from .forms import CampaignAdminForm, EventPrepareForm, EventControlForm
 from . import tournament
+from .reports import campaign_archive, consistent_read, round_payload, make_archive, vote_rows, vote_time, csv_bytes
 from rest_framework.exceptions import ValidationError
 
 
@@ -52,7 +53,7 @@ class AuditedAdmin(admin.ModelAdmin):
 @admin.register(Campaign)
 class CampaignAdmin(AuditedAdmin):
     form = CampaignAdminForm
-    list_display = ('name', 'admin_telegram_id', 'access_mode', 'allowed_voters_count', 'event_link', 'is_active', 'created_at')
+    list_display = ('name', 'admin_telegram_id', 'access_mode', 'allowed_voters_count', 'event_link', 'report_link', 'is_active', 'created_at')
     list_filter = ('is_active', 'access_mode')
     search_fields = ('name',)
 
@@ -69,7 +70,25 @@ class CampaignAdmin(AuditedAdmin):
         return actions
 
     def get_urls(self):
-        return [path('<int:pk>/event/', self.admin_site.admin_view(self.event), name='voting_campaign_event')] + super().get_urls()
+        return [path('<int:pk>/event/', self.admin_site.admin_view(self.event), name='voting_campaign_event'),
+                path('<int:pk>/report/', self.admin_site.admin_view(self.report), name='voting_campaign_report')] + super().get_urls()
+
+    @admin.display(description='Отчёт')
+    def report_link(self, obj):
+        return format_html('<a href="{}">Скачать результаты и голоса</a>', reverse('admin:voting_campaign_report', args=[obj.pk]))
+
+    def report(self, request, pk):
+        with consistent_read():
+            campaign = get_object_or_404(Campaign, pk=pk)
+            if not (self.has_view_permission(request, campaign) and all(request.user.has_perm(f'voting.view_{model}')
+                    for model in ('round', 'vote', 'roundresultsnapshot'))):
+                raise PermissionDenied
+            content = campaign_archive(campaign)
+        with admin_context(request):
+            record('export.created', campaign_id=campaign.pk, details={'format': 'campaign_archive'})
+        response = HttpResponse(content, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="campaign-{pk}-report.zip"'
+        return response
 
     def event(self, request, pk):
         campaign = get_object_or_404(Campaign, pk=pk)
@@ -191,19 +210,34 @@ class RoundAdmin(AuditedAdmin):
             'round': rd, 'summary': results(rd), 'rounds': rd.previous_rounds.filter(event_stage='performance').order_by('number') if rd.event_stage == 'qualification' else [], 'opts': self.model._meta,
         })
 
+    @consistent_read()
     def report(self, request, pk):
         rd = get_object_or_404(Round.objects.select_related('campaign'), pk=pk)
         if not (self.has_view_permission(request, rd) and request.user.has_perm('voting.view_vote')
                 and request.user.has_perm('voting.view_auditevent') and request.user.has_perm('voting.view_roundresultsnapshot')):
             raise PermissionDenied
-        current = results(rd)
         snapshots = RoundResultSnapshot.objects.filter(round_id=rd.pk)
         selected = snapshots.filter(pk=request.GET.get('snapshot')).first() if request.GET.get('snapshot', '').isdigit() else None
-        shown = selected.data if selected else current
-        votes = result_votes(rd).select_related('participant').order_by('-created_at', '-pk')
+        if request.GET.get('snapshot') and selected is None:
+            from django.http import Http404
+            raise Http404('Снимок этого раунда не найден.')
+        shown = {**selected.data, 'round_id': rd.pk} if selected else round_payload(rd)
+        votes = shown.get('votes')
+        if votes is not None:
+            votes = [{**v, 'display_time': vote_time(v)} for v in votes]
         events = AuditEvent.objects.filter(round_id=rd.pk)
         export = request.GET.get('export')
+        if export == 'backup':
+            content = make_archive({'id': rd.campaign_id, 'name': shown['campaign']},
+                                   [shown], list(snapshots.values()))
+            response = HttpResponse(content, content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename="round-{rd.pk}-report.zip"'
+            with admin_context(request):
+                record('export.created', round_obj=rd, details={'format': export, 'snapshot_id': selected.pk if selected else None})
+            return response
         if export in {'results', 'votes', 'events'}:
+            if export == 'votes' and votes is None:
+                return HttpResponse('В старом снимке нет отдельных голосов. Откройте текущее состояние.', status=400)
             response = HttpResponse(content_type='text/csv; charset=utf-8')
             response['Content-Disposition'] = f'attachment; filename="round-{rd.pk}-{export}.csv"'
             response.write('\ufeff')
@@ -213,9 +247,7 @@ class RoundAdmin(AuditedAdmin):
                 for p in shown['participants']:
                     writer.writerow([rd.pk, selected.version if selected else 'текущее состояние', p['position'], csv_cell(p['name']), p['yes'], p['no'], p['transferred'], p['winner']])
             elif export == 'votes':
-                writer.writerow(['ID', 'Участник', 'Telegram ID', 'Выбор', 'Записан', 'Исходный голос ID', 'Исходное время', 'Операция'])
-                for v in votes.iterator():
-                    writer.writerow([v.pk, csv_cell(v.participant.full_name), v.user_telegram_id, v.choice or 'yes', v.created_at.isoformat(), v.source_vote_id or '', v.source_created_at.isoformat() if v.source_created_at else '', v.transfer_key])
+                response.content = csv_bytes(vote_rows(votes))
             else:
                 writer.writerow(['Время', 'Событие', 'Источник', 'Инициатор ID', 'Роль', 'Результат', 'Причина', 'Request ID', 'Данные'])
                 for e in events.iterator():
@@ -226,7 +258,8 @@ class RoundAdmin(AuditedAdmin):
         return TemplateResponse(request, 'admin/voting/round_report.html', {
             **self.admin_site.each_context(request), 'title': f'История: {rd}', 'round': rd,
             'summary': shown, 'selected_snapshot': selected, 'snapshots': snapshots,
-            'votes': Paginator(votes, 50).get_page(request.GET.get('votes_page')),
+            'votes': Paginator(votes or [], 50).get_page(request.GET.get('votes_page')),
+            'votes_available': votes is not None,
             'events': Paginator(events, 50).get_page(request.GET.get('events_page')),
             'opts': self.model._meta,
         })

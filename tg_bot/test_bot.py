@@ -263,3 +263,50 @@ class BotTests(IsolatedAsyncioTestCase):
                     storage = await self.send_text('Фамилия Имя', preserve_state=True)
             api.assert_awaited_once_with('POST', 'rounds/1/jury', {'full_name': 'Фамилия Имя'})
             self.assertIsNone(await storage.get_state())
+
+    async def test_empty_campaign_offers_tour_types_and_legacy_rounds_are_visible(self):
+        module = importlib.import_module('event_menu')
+        message = AsyncMock()
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock,
+                          return_value={'name': 'Event', 'rounds': []}):
+            await module.show_campaign(message, 1, True)
+        buttons = message.answer.call_args.kwargs['reply_markup'].inline_keyboard
+        callbacks = {button.callback_data for row in buttons for button in row}
+        self.assertIn('ev_create_individual_1', callbacks)
+        self.assertIn('ev_create_standard_1', callbacks)
+        legacy = {'id': 5, 'name': 'Раунд: Иванов Иван', 'stage': '', 'completed': False, 'status': 'active'}
+        message.reset_mock()
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock,
+                          return_value={'name': 'Event', 'rounds': [legacy]}):
+            await module.show_campaign(message, 1, True)
+        buttons = message.answer.call_args.kwargs['reply_markup'].inline_keyboard
+        self.assertEqual(buttons[0][0].callback_data, 'ev_round_5')
+        self.assertIn('Иванов Иван', buttons[0][0].text)
+
+    async def test_create_tour_and_add_one_person_fsm(self):
+        module = importlib.import_module('event_menu')
+        await self.dispatch('ev_create_individual_1', actor=101, private=True)
+        with patch.object(module, 'show_round', new_callable=AsyncMock):
+            with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'tour_id': 8}) as api:
+                with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True):
+                    storage = await self.send_text('5', preserve_state=True)
+            api.assert_awaited_once_with('POST', 'campaigns/1/create_tour', {'mode': 'individual', 'winners_count': 5})
+            self.assertIsNone(await storage.get_state())
+        await self.dispatch('ev_add_8', actor=101, private=True)
+        with patch.object(module, 'show_round', new_callable=AsyncMock):
+            with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'message': 'OK'}) as api:
+                with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True):
+                    await self.send_text('Иванов Иван', preserve_state=True)
+            api.assert_awaited_once_with('POST', 'rounds/8/add_entries', {'names': ['Иванов Иван']})
+
+    async def test_new_tour_controls_require_full_administrator(self):
+        for actor in (202, 303):
+            for value in ('ev_create_individual_1', 'ev_create_standard_1', 'ev_add_1', 'ev_count_1'):
+                api = await self.dispatch(value, actor=actor, private=True)
+                api.assert_not_awaited()
+            for state in (self.bot.EventStates.create_count, self.bot.EventStates.add_names, self.bot.EventStates.winners_count):
+                with patch.object(self.bot.api, 'request', new_callable=AsyncMock) as api:
+                    with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True):
+                        await self.send_text('3', actor=actor, state=state,
+                                             state_data={'campaign_id': 1, 'mode': 'individual', 'round_id': 1})
+                api.assert_not_awaited()

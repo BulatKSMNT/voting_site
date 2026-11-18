@@ -117,6 +117,23 @@ class Round(AuditedModel):
                            details={"before": {"is_current": True}, "after": {"is_current": False}})
             super().save(*args, **kwargs)
 
+    @property
+    def performance_rounds(self):
+        return self.previous_rounds.filter(event_stage='performance').order_by('number')
+
+    @property
+    def display_name(self):
+        if self.type == 'individual':
+            person = self.participants.first()
+            return f'Раунд: {person.full_name if person else "без участника"}'
+        if not self.event_stage:
+            return f'Общий раунд №{self.number} · топ-{self.winners_count}'
+        number = self.campaign.rounds.exclude(event_stage='performance').filter(number__lte=self.number).count()
+        if self.event_stage == 'final':
+            return f'Тур {number}: финал'
+        mode = 'индивидуальные раунды' if self.event_stage == 'qualification' else 'общее голосование'
+        return f'Тур {number}: {mode} · топ-{self.winners_count}'
+
     def __str__(self):
         return f"Раунд №{self.number} ({self.campaign.name})"
 

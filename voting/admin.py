@@ -76,16 +76,17 @@ class CampaignAdmin(AuditedAdmin):
         if not (self.has_change_permission(request, campaign) and request.user.has_perm('voting.add_round') and request.user.has_perm('voting.add_participant')):
             raise PermissionDenied
         form = EventPrepareForm(request.POST or None)
-        rounds = campaign.rounds.exclude(event_stage='').order_by('number')
+        rounds = campaign.rounds.exclude(event_stage='performance').order_by('number')
         if request.method == 'POST' and form.is_valid():
             try:
                 with admin_context(request):
-                    tournament.prepare_event(pk, [n.strip() for n in form.cleaned_data['names'].splitlines() if n.strip()])
+                    tournament.create_tour(pk, form.cleaned_data['mode'] or 'individual', form.cleaned_data['winners_count'] or 8,
+                                           [n.strip() for n in form.cleaned_data['names'].splitlines() if n.strip()])
                 return redirect('admin:voting_campaign_event', pk)
             except ValidationError as exc:
                 form.add_error(None, str(exc.detail))
         return TemplateResponse(request, 'admin/voting/event_controls.html', {
-            **self.admin_site.each_context(request), 'title': f'Мероприятие: {campaign.name}', 'form': form if not rounds.exists() else None,
+            **self.admin_site.each_context(request), 'title': f'Мероприятие: {campaign.name}', 'form': form if not campaign.rounds.exclude(event_stage='').filter(event_completed=False).exists() else None,
             'rounds': rounds, 'opts': self.model._meta,
         })
 
@@ -107,10 +108,14 @@ def csv_cell(value):
 
 @admin.register(Round)
 class RoundAdmin(AuditedAdmin):
-    list_display = ('campaign', 'number', 'event_stage', 'status', 'started_at', 'ended_at', 'event_link', 'report_link')
+    list_display = ('campaign', 'number', 'tour_title', 'status', 'started_at', 'ended_at', 'event_link', 'report_link')
     list_filter = ('status', 'campaign', 'type')
     list_select_related = ('campaign',)
     readonly_fields = ('report_link', 'event_link', 'cycle', 'jury_choice', 'jury_name')
+
+    @admin.display(description='Тур / раунд')
+    def tour_title(self, obj):
+        return obj.display_name
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'campaign' and not request.resolver_match.kwargs.get('object_id'):
@@ -125,7 +130,7 @@ class RoundAdmin(AuditedAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.event_stage:
-            return tuple(f.name for f in self.model._meta.fields if f.name != 'is_current') + ('event_link', 'report_link')
+            return tuple(f.name for f in self.model._meta.fields if f.name not in {'is_current', 'event_stage'}) + ('tour_title', 'event_link', 'report_link')
         return super().get_readonly_fields(request, obj)
 
     def save_model(self, request, obj, form, change):
@@ -166,6 +171,12 @@ class RoundAdmin(AuditedAdmin):
                         result = tournament.start_round(pk)
                     elif data['action'] == 'finish':
                         result = tournament.finish_round(pk)
+                    elif data['action'] == 'add':
+                        if not (request.user.has_perm('voting.add_round') and request.user.has_perm('voting.add_participant')):
+                            raise PermissionDenied
+                        result = tournament.add_entries(pk, [n.strip() for n in data['names'].splitlines() if n.strip()])
+                    elif data['action'] == 'configure':
+                        result = tournament.configure_tour(pk, data['winners_count'])
                     elif data['action'] == 'tie':
                         result = tournament.resolve_tie(pk, [p.pk for p in data['tied']])
                     else:
@@ -176,8 +187,8 @@ class RoundAdmin(AuditedAdmin):
             except ValidationError as exc:
                 form.add_error(None, str(exc.detail))
         return TemplateResponse(request, 'admin/voting/event_controls.html', {
-            **self.admin_site.each_context(request), 'title': f'Управление: {rd}', 'form': form,
-            'round': rd, 'summary': results(rd), 'opts': self.model._meta,
+            **self.admin_site.each_context(request), 'title': f'Управление: {rd.display_name}', 'form': form if form.fields['action'].choices else None,
+            'round': rd, 'summary': results(rd), 'rounds': rd.previous_rounds.filter(event_stage='performance').order_by('number') if rd.event_stage == 'qualification' else [], 'opts': self.model._meta,
         })
 
     def report(self, request, pk):

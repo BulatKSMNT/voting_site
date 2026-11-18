@@ -4,6 +4,7 @@
 {% block body_class %}results-page{% endblock %}
 {% block results_active %}aria-current="page"{% endblock %}
 {% block content %}
+<button type="button" id="screen-toggle" class="screen-toggle" aria-pressed="false">На весь экран</button>
 <section class="scoreboard" aria-labelledby="results-title">
     <div class="header results-heading">
         <div><p class="eyebrow">БИТВА ВЕДУЩИХ · САМАРА</p><h1 id="results-title">{% if stage_label %}{{ stage_label }}{% else %}Результаты голосования{% endif %}</h1>
@@ -25,10 +26,11 @@
     {% else %}
     <div class="empty-scoreboard"><img src="{% static 'images/logo.webp' %}" alt="" width="170" height="170"><h2>Скоро начнём</h2><p>Сейчас активного голосования нет. Когда организатор откроет раунд, результаты появятся здесь автоматически.</p><a class="button button-light" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Перейти к боту <span aria-hidden="true">↗</span></a></div>
     {% endif %}
-    {% if active_rounds %}<section class="rounds-section" aria-labelledby="rounds-title"><h2 id="rounds-title">Туры мероприятия</h2><nav class="round-links" aria-label="Выбор раунда">{% for r in active_rounds %}<a class="round-link {% if r.id == selected_round_id %}is-selected{% endif %}" href="?round_id={{ r.id }}" {% if r.id == selected_round_id %}aria-current="page"{% endif %}>{% if r.event_stage %}{{ r.get_event_stage_display }}{% else %}Раунд №{{ r.number }}{% if r.type == 'individual' %} · Индивидуальный{% endif %}{% endif %}</a>{% endfor %}</nav></section>{% endif %}
+    {% if active_rounds %}<section class="rounds-section" aria-labelledby="rounds-title"><h2 id="rounds-title">Туры мероприятия</h2><nav class="round-links" aria-label="Выбор раунда">{% for r in active_rounds %}<a class="round-link {% if r.id == selected_round_id %}is-selected{% endif %}" href="?round_id={{ r.id }}" {% if r.id == selected_round_id %}aria-current="page"{% endif %}>{% if r.event_stage %}{{ r.display_name }}{% else %}Раунд №{{ r.number }}{% if r.type == 'individual' %} · Индивидуальный{% endif %}{% endif %}</a>{% endfor %}</nav></section>{% endif %}
 </section>
 {% endblock %}
 {% block scripts %}
+<script src="{% static 'js/results-screen.js' %}?v=20261119"></script>
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     urlParams.set('ajax', '1');
@@ -59,6 +61,7 @@
                 window.location.reload();
                 return;
             }
+            if (data.stage_label) document.getElementById('results-title').textContent = data.stage_label;
             const leftCol = document.getElementById('left-column');
             if (leftCol && data.left_column) leftCol.replaceChildren(...data.left_column.map(buildRow));
             const rightCol = document.getElementById('right-column');

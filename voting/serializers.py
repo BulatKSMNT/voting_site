@@ -114,6 +114,7 @@ class RoundSerializer(serializers.ModelSerializer):
     number = serializers.IntegerField(required=False)
     participant_name = serializers.SerializerMethodField()
     can_edit_jury = serializers.SerializerMethodField()
+    display_name = serializers.CharField(read_only=True)
 
     def get_can_edit_jury(self, obj):
         return obj.type == 'standard' and obj.event_stage in {'', 'semifinal'} and (

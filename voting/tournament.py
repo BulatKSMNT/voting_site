@@ -1,4 +1,4 @@
-"""The event workflow: individual performances -> eight -> two + one -> winner."""
+"""Tour controls built on the existing rounds, preserving votes and history."""
 import hashlib
 
 from django.db import transaction
@@ -16,50 +16,122 @@ def locked_round(pk):
 
 
 def event_state(campaign_id):
-    rounds = Round.objects.filter(campaign_id=campaign_id).exclude(event_stage='').order_by('number')
+    rounds = Round.objects.filter(campaign_id=campaign_id).order_by('number').prefetch_related('participants')
     return [{'id': r.pk, 'number': r.number, 'stage': r.event_stage, 'status': r.status,
              'completed': r.event_completed, 'is_current': r.is_current, 'next_round': r.next_round_id,
-             'name': r.participants.first().full_name if r.event_stage == 'performance' and r.participants.exists() else r.get_event_stage_display(),
-             'max_choices': r.max_choices} for r in rounds.prefetch_related('participants')]
+             'parent_tour': r.next_round_id if r.event_stage == 'performance' else None,
+             'name': r.display_name, 'type': r.type, 'winners_count': r.winners_count,
+             'max_choices': r.max_choices} for r in rounds]
 
 
-@transaction.atomic
-def prepare_event(campaign_id, names):
-    campaign = Campaign.objects.select_for_update().get(pk=campaign_id, is_active=True)
-    if not isinstance(names, list) or not 8 <= len(names) <= 100:
-        raise ValidationError('Передайте список от 8 до 100 участников (для мероприятия — 25).')
+def clean_names(names, *, allow_empty=False):
+    if not isinstance(names, list) or len(names) > 100 or (not names and not allow_empty):
+        raise ValidationError('Передайте от 1 до 100 имён; каждое с новой строки.')
     if any(not isinstance(n, str) or not n.strip() or len(n.strip()) > 200 for n in names):
         raise ValidationError('Имя каждого участника должно содержать от 1 до 200 символов.')
     names = [n.strip() for n in names]
     if len({n.casefold() for n in names}) != len(names):
         raise ValidationError('В списке повторяются имена. Уточните имена однофамильцев.')
-    existing = Round.objects.filter(campaign=campaign, event_stage='qualification').first()
+    return names
+
+
+def validate_count(value):
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 100:
+        raise ValidationError('Количество проходящих участников: целое число от 1 до 100.')
+    return value
+
+
+@transaction.atomic
+def create_tour(campaign_id, mode='individual', winners_count=8, names=None):
+    campaign = Campaign.objects.select_for_update().get(pk=campaign_id, is_active=True)
+    if mode not in {'individual', 'standard'}:
+        raise ValidationError('Выберите индивидуальный или общий тур.')
+    validate_count(winners_count)
+    names = clean_names([] if names is None else names, allow_empty=True)
+    if campaign.rounds.exclude(event_stage='').filter(event_completed=False).exists():
+        raise ValidationError('Сначала завершите текущий тур. Следующий будет подготовлен автоматически.')
+    stage = {'individual': 'qualification', 'standard': 'semifinal'}[mode]
+    board = Round.objects.create(campaign=campaign, type='standard', event_stage=stage,
+                                 status='published' if mode == 'individual' else 'pending',
+                                 winners_count=winners_count, max_choices=3)
+    if names:
+        add_entries(board.pk, names)
+    record('tour.created', round_obj=board, details={'mode': mode, 'winners_count': board.winners_count})
+    return {'rounds': event_state(campaign.pk), 'tour_id': board.pk, 'qualification_id': board.pk}
+
+
+@transaction.atomic
+def add_entries(pk, names):
+    rd = locked_round(pk)
+    names = clean_names(names)
+    if rd.event_stage not in {'qualification', 'semifinal'} or rd.ended_at or rd.event_completed:
+        raise ValidationError('Добавление доступно в незавершённом индивидуальном или ещё не открытом общем туре.')
+    if rd.event_stage == 'semifinal' and (rd.status != 'pending' or rd.votes.exists()):
+        raise ValidationError('Состав общего тура можно менять только до открытия голосования.')
+    existing = {n.casefold() for n in rd.participants.values_list('full_name', flat=True)}
+    if existing.intersection(n.casefold() for n in names):
+        raise ValidationError('Такое имя уже есть в туре. Уточните имя однофамильца.')
+    if len(existing) + len(names) > 100:
+        raise ValidationError('В одном туре может быть не более 100 участников.')
+    for name in names:
+        source = None
+        if rd.event_stage == 'qualification':
+            performance = Round.objects.create(campaign=rd.campaign, type='individual', event_stage='performance',
+                                               status='pending', winners_count=1, max_choices=1, next_round=rd)
+            source = Participant.objects.create(round=performance, full_name=name)
+        Participant.objects.create(round=rd, full_name=name, source_participant_id=source.pk if source else None)
+    record('tour.entries_added', round_obj=rd, details={'names': names})
+    return {'message': f'Добавлено участников: {len(names)}.', 'tour_id': rd.pk}
+
+
+@transaction.atomic
+def configure_tour(pk, winners_count):
+    rd = locked_round(pk)
+    validate_count(winners_count)
+    if rd.event_stage == 'performance' or rd.ended_at or rd.event_completed:
+        raise ValidationError('Число проходящих меняется у тура до его завершения.')
+    if rd.event_stage == 'final' and winners_count != 1:
+        raise ValidationError('В финале выбирается один победитель.')
+    rd.winners_count = winners_count
+    rd.save(update_fields=['winners_count'])
+    return {'message': f'В следующий тур проходят топ-{winners_count}.', 'winners_count': winners_count}
+
+
+@transaction.atomic
+def prepare_event(campaign_id, names, winners_count=8):
+    campaign = Campaign.objects.select_for_update().get(pk=campaign_id, is_active=True)
+    names = clean_names(names)
+    validate_count(winners_count)
+    existing = campaign.rounds.filter(event_stage='qualification').first()
     if existing:
         old = list(existing.participants.order_by('order_number').values_list('full_name', flat=True))
-        if old != names:
-            raise ValidationError('Мероприятие уже подготовлено с другим списком. Создайте отдельную кампанию.')
+        if old != names or existing.winners_count != winners_count:
+            raise ValidationError('Тур уже существует. Добавьте участников или настройте топ-N в его карточке.')
         return {'rounds': event_state(campaign.pk), 'qualification_id': existing.pk}
-    if campaign.rounds.exists():
-        raise ValidationError('Для подготовки мероприятия нужна кампания без раундов.')
-    board = Round.objects.create(campaign=campaign, type='standard', event_stage='qualification',
-                                 status='published', winners_count=8)
-    for name in names:
-        performance = Round.objects.create(campaign=campaign, type='individual', event_stage='performance',
-                                           status='pending', winners_count=1, max_choices=1, next_round=board)
-        participant = Participant.objects.create(round=performance, full_name=name)
-        Participant.objects.create(round=board, full_name=name, source_participant_id=participant.pk)
-    board.is_current = True
-    board.save(update_fields=['is_current'])
-    record('event.prepared', round_obj=board, details={'performances': len(names)})
+    prepared = create_tour(campaign_id, 'individual', winners_count, names)
+    board = Round.objects.get(pk=prepared['tour_id'])
+    if not campaign.rounds.filter(status='active').exists():
+        board.is_current = True
+        board.save(update_fields=['is_current'])
     return {'rounds': event_state(campaign.pk), 'qualification_id': board.pk}
 
 
 @transaction.atomic
 def start_round(pk):
     rd = locked_round(pk)
+    if not rd.event_stage:
+        if rd.status == 'ended':
+            raise ValidationError('Архивный раунд открывает главный администратор командой /resurrect_round.')
+        rd.status, rd.is_current = 'active', True
+        rd.save(update_fields=['status', 'is_current'])
+        return {'message': 'Голосование открыто.', 'round_id': rd.pk}
     if rd.event_stage not in {'performance', 'semifinal', 'final'} or rd.event_completed or rd.ended_at:
         raise ValidationError('Этот тур нельзя запустить. Завершённые туры мероприятия не открываются заново.')
+    if not rd.participants.exists():
+        raise ValidationError('Сначала добавьте участника в раунд.')
     if rd.status == 'active':
+        rd.is_current = True
+        rd.save(update_fields=['is_current'])
         return {'message': 'Голосование уже запущено.', 'round_id': rd.pk}
     if Round.objects.filter(campaign=rd.campaign, status='active').exclude(pk=rd.pk).exists():
         raise ValidationError('Сначала завершите текущее голосование кампании.')
@@ -91,7 +163,7 @@ def sync_extra_finalist(source, target):
 def set_jury(pk, participant_id=None, full_name=''):
     rd = locked_round(pk)
     if rd.type != 'standard' or rd.event_stage not in {'', 'semifinal'}:
-        raise ValidationError('Дополнительный победитель выбирается в общем голосовании второго тура.')
+        raise ValidationError('Дополнительный победитель выбирается в общем голосовании.')
     if participant_id and full_name:
         raise ValidationError('Выберите участника или введите имя нового, но не оба варианта.')
     if full_name and (rd.event_stage != 'semifinal' or not isinstance(full_name, str) or not 2 <= len(full_name.strip().split()) or len(full_name.strip()) > 200):
@@ -137,11 +209,14 @@ def resolve_tie(pk, participant_ids):
 def finish_round(pk):
     rd = locked_round(pk)
     if not rd.event_stage:
-        raise ValidationError('Используйте обычную команду завершения раунда.')
+        from .services import end_and_transfer
+        return end_and_transfer(pk, {'action_type': 'end_standard' if rd.type == 'standard' else 'auto_individual'})
     key = hashlib.sha256(f'event-finish:{rd.pk}:{rd.cycle}'.encode()).hexdigest()
     previous = RoundOperation.objects.filter(key=key).first()
     if previous:
         return previous.response
+    if not rd.participants.exists():
+        raise ValidationError('В туре нет участников.')
     if rd.status == 'pending':
         raise ValidationError('Голосование ещё не запускалось.')
     if rd.event_stage == 'qualification' and rd.previous_rounds.filter(event_stage='performance', event_completed=False).exists():
@@ -174,7 +249,7 @@ def finish_round(pk):
     rd.event_completed = True
     rd.save(update_fields=['event_completed', 'next_round'])
     snapshot(rd)
-    response = {'message': 'Тур завершён.' + (' Следующий тур подготовлен; голоса начинаются с нуля.' if target and target.event_stage != 'qualification' else ''),
+    response = {'message': ('Индивидуальный раунд завершён. Результат учтён в таблице тура.' if rd.event_stage == 'performance' else 'Тур завершён.') + (' Следующий тур подготовлен; голоса начинаются с нуля.' if target and target.event_stage != 'qualification' else ''),
                 'round_id': rd.pk, 'next_round_id': target.pk if target else None,
                 'winners': [{'id': p['id'], 'name': p['name'], 'votes': p['yes']} for p in auto], 'needs_tiebreak': False}
     RoundOperation.objects.create(key=key, round_id=rd.pk, cycle=rd.cycle, action='event_finish', response=response)

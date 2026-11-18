@@ -295,3 +295,88 @@ class EventTests(TestCase):
         unvoted = board.participants.last()
         response = self.api.patch(f'/voting/api/participants/{unvoted.pk}/', {'round': target.pk})
         self.assertEqual(response.status_code, 400)
+
+    def test_tour_can_be_built_incrementally_and_rounds_selected_by_name(self):
+        self.actor()
+        response = self.api.post(f'/voting/api/campaigns/{self.campaign.pk}/create_tour/',
+                                 {'mode': 'individual', 'winners_count': 2}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        tour = Round.objects.get(pk=response.data['tour_id'])
+        self.action(tour, 'event_finish', expected=400)
+        self.action(tour, 'add_entries', {'names': ['Петров Пётр']})
+        self.action(tour, 'add_entries', {'names': ['Иванов Иван', 'Сидоров Семён']})
+        self.action(tour, 'add_entries', {'names': ['Петров Пётр']}, expected=400)
+        rounds = list(tour.performance_rounds)
+        self.assertEqual([r.participants.get().full_name for r in rounds], ['Петров Пётр', 'Иванов Иван', 'Сидоров Семён'])
+        # The administrator chooses the last entry first, independently of creation order.
+        for index, rd in enumerate(reversed(rounds)):
+            self.action(rd, 'event_start')
+            self.actor(303)
+            active = self.api.get('/voting/api/rounds/active_info/').data
+            self.assertEqual(active['round_id'], rd.pk)
+            self.assertIn(rd.participants.get().full_name, active['round_name'])
+            for uid in range(1000, 1003-index):
+                self.vote(rd.participants.get(), uid, choice='yes')
+            self.vote(rd.participants.get(), 2000, choice='no')
+            self.action(rd, 'event_finish')
+            # Closing one performance does not yet create the next tour.
+            self.assertFalse(self.campaign.rounds.filter(event_stage='semifinal').exists())
+        self.assertEqual(len(self.board(tour)[1]), 2)
+        result = self.action(tour, 'event_finish')
+        target = Round.objects.get(pk=result['next_round_id'])
+        self.assertEqual(list(target.participants.values_list('full_name', flat=True)), ['Сидоров Семён', 'Иванов Иван'])
+        self.assertEqual(target.votes.count(), 0)
+        self.assertEqual(target.max_choices, 3)
+        self.assertEqual(self.action(tour, 'event_finish'), result)
+        self.action(tour, 'add_entries', {'names': ['Поздний Участник']}, expected=400)
+
+    def test_top_n_changes_before_closing_and_managed_mutations_remain_guarded(self):
+        prepared = tournament.create_tour(self.campaign.pk, 'individual', 8, ['Фамилия Имя'])
+        tour = Round.objects.get(pk=prepared['tour_id'])
+        self.actor()
+        url = f'/voting/api/rounds/{tour.pk}/update_winners_count/'
+        self.assertEqual(self.api.patch(url, {'winners_count': 1}, format='json').status_code, 200)
+        tour.refresh_from_db()
+        self.assertEqual(tour.winners_count, 1)
+        self.assertIn('топ-1', self.board(tour)[0]['stage_label'])
+        for bad in (0, -1, 101, True, 1.5, 'one'):
+            self.assertEqual(self.api.patch(url, {'winners_count': bad}, format='json').status_code, 400)
+        for uid in (202, 303):
+            self.actor(uid)
+            self.assertEqual(self.api.patch(url, {'winners_count': 2}, format='json').status_code, 403)
+            self.assertEqual(self.api.post(f'/voting/api/rounds/{tour.pk}/add_entries/', {'names': ['Другой Участник']}, format='json').status_code, 403)
+            self.assertEqual(self.api.post(f'/voting/api/campaigns/{self.campaign.pk}/create_tour/', {'mode': 'standard'}, format='json').status_code, 403)
+        performance = tour.performance_rounds.get()
+        tournament.start_round(performance.pk)
+        tournament.finish_round(performance.pk)
+        tournament.finish_round(tour.pk)
+        self.actor()
+        self.assertEqual(self.api.patch(url, {'winners_count': 2}, format='json').status_code, 400)
+
+    def test_event_menu_includes_existing_legacy_rounds_and_preserves_votes(self):
+        rd = Round.objects.create(campaign=self.campaign, type='individual', status='active')
+        person = Participant.objects.create(round=rd, full_name='Существующий Участник')
+        self.vote(person, 303, choice='yes')
+        self.actor()
+        data = self.api.get(f'/voting/api/campaigns/{self.campaign.pk}/event/').data
+        self.assertEqual(data['rounds'][0]['id'], rd.pk)
+        self.assertIn(person.full_name, data['rounds'][0]['name'])
+        self.assertIsNone(data['rounds'][0]['parent_tour'])
+        self.assertEqual(rd.votes.count(), 1)
+        self.action(rd, 'event_finish')
+        self.assertEqual(rd.votes.count(), 1)
+        self.assertEqual(self.campaign.rounds.filter(type='standard').get().votes.count(), 1)
+
+    def test_admin_creates_empty_tour_adds_names_and_configures_top_n(self):
+        user = get_user_model().objects.create_superuser('tour-admin', password='test')
+        self.client.force_login(user)
+        url = reverse('admin:voting_campaign_event', args=[self.campaign.pk])
+        self.assertEqual(self.client.post(url, {'mode': 'individual', 'winners_count': 2}).status_code, 302)
+        tour = self.campaign.rounds.get(event_stage='qualification')
+        url = reverse('admin:voting_round_event', args=[tour.pk])
+        self.assertEqual(self.client.post(url, {'action': 'add', 'names': 'Первый Участник\nВторой Участник\nТретий Участник'}).status_code, 302)
+        self.assertEqual(tour.performance_rounds.count(), 3)
+        self.assertContains(self.client.get(url), 'Первый Участник')
+        self.assertEqual(self.client.post(url, {'action': 'configure', 'winners_count': 1}).status_code, 302)
+        tour.refresh_from_db()
+        self.assertEqual(tour.winners_count, 1)

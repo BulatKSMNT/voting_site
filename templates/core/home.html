@@ -59,7 +59,7 @@
     <div class="section-heading section-heading-row"><h2 id="recent-title">Последние раунды</h2><span class="muted">История мероприятия</span></div>
     <div class="table-wrap">
         <table class="event-table"><thead><tr><th>Кампания</th><th>Раунд</th><th>Статус</th><th>Начало</th></tr></thead><tbody>
-        {% for r in recent_rounds %}<tr><td>{{ r.campaign.name }}</td><td>{% if r.event_stage %}{{ r.get_event_stage_display }}{% else %}Раунд {{ r.number }}{% endif %}</td><td><span class="status-pill status-{{ r.status }}">{{ r.get_status_display }}</span></td><td>{{ r.started_at|date:"d.m.Y H:i" }}</td></tr>{% endfor %}
+        {% for r in recent_rounds %}<tr><td>{{ r.campaign.name }}</td><td>{% if r.event_stage %}{{ r.display_name }}{% else %}Раунд {{ r.number }}{% endif %}</td><td><span class="status-pill status-{{ r.status }}">{{ r.get_status_display }}</span></td><td>{{ r.started_at|date:"d.m.Y H:i" }}</td></tr>{% endfor %}
         </tbody></table>
     </div>
 </section>

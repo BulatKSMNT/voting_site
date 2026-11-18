@@ -66,7 +66,13 @@ class CampaignViewSet(LockedModelViewSet):
     @action(detail=True, methods=['post'])
     def prepare_event(self, request, pk=None):
         campaign = self.get_object()
-        return Response(tournament.prepare_event(campaign.pk, request.data.get('names')))
+        return Response(tournament.prepare_event(campaign.pk, request.data.get('names'), request.data.get('winners_count', 8)))
+
+    @action(detail=True, methods=['post'])
+    def create_tour(self, request, pk=None):
+        campaign = self.get_object()
+        return Response(tournament.create_tour(campaign.pk, request.data.get('mode', 'individual'),
+                        request.data.get('winners_count', 8), request.data.get('names')))
 
     @action(detail=True, methods=['patch'])
     @transaction.atomic
@@ -106,6 +112,10 @@ class RoundViewSet(LockedModelViewSet):
         if instance.event_stage:
             raise serializers.ValidationError('Туры подготовленного мероприятия нельзя удалять по отдельности.')
         return super().perform_destroy(instance)
+
+    @action(detail=True, methods=['post'])
+    def add_entries(self, request, pk=None):
+        return Response(tournament.add_entries(self.get_object().pk, request.data.get('names')))
 
     @action(detail=True, methods=['post'])
     def event_start(self, request, pk=None):
@@ -189,11 +199,11 @@ class RoundViewSet(LockedModelViewSet):
             "max_choices": round_obj.max_choices,
             "remaining_choices": max(0, round_obj.max_choices - len(user_votes)),
             "event_stage": round_obj.event_stage,
-            "round_name": str(round_obj),
+            "round_name": round_obj.display_name,
             "round_type": round_obj.type,
             "status": round_obj.status,
             "participants": ([{'id': p['id'], 'full_name': p['name'], 'votes': p['yes'], 'order_number': p['order_number']}
-                              for p in round_results(round_obj)['participants'][:8]] if round_obj.event_stage == 'qualification' else [
+                              for p in round_results(round_obj)['participants'][:round_obj.winners_count]] if round_obj.event_stage == 'qualification' else [
                 {
                     "id": p.id,
                     "full_name": p.full_name,
@@ -213,23 +223,8 @@ class RoundViewSet(LockedModelViewSet):
     @transaction.atomic
     def update_winners_count(self, request, pk=None):
         """Изменяет количество призовых мест в раунде"""
-        try:
-            round_obj = Round.objects.select_for_update().get(pk=pk)
-            if round_obj.event_stage:
-                raise serializers.ValidationError('Число победителей в турах мероприятия задано схемой 8 → 2 → 1.')
-            new_count = request.data.get("winners_count")
-
-            if not new_count or int(new_count) < 1:
-                return Response({"error": "Укажите корректное число победителей (от 1)"}, status=400)
-
-            round_obj.winners_count = int(new_count)
-            round_obj.save(update_fields=["winners_count"])
-
-            return Response({"message": f"✅ В Раунде #{round_obj.number} теперь {new_count} призовых мест!"})
-        except Round.DoesNotExist:
-            return Response({"error": "Раунд не найден."}, status=404)
-        except (ValueError, TypeError):
-            return Response({"error": "Количество должно быть числом."}, status=400)
+        rd = self.get_object()
+        return Response(tournament.configure_tour(rd.pk, request.data.get('winners_count')))
 
     @action(detail=True, methods=['post'])
     def end_and_transfer(self, request, pk=None):
@@ -362,8 +357,8 @@ class CurrentRoundResults(View):
             summary = round_results(current_round)
             participants = summary['participants']
             if current_round.event_stage == 'qualification':
-                participants = participants[:8]
-            context['stage_label'] = current_round.get_event_stage_display() if current_round.event_stage else ''
+                participants = participants[:current_round.winners_count]
+            context['stage_label'] = current_round.display_name if current_round.event_stage else ''
             context['needs_tiebreak'] = bool(summary['tie_slots'] and current_round.ended_at)
 
             results = [
@@ -391,6 +386,7 @@ class CurrentRoundResults(View):
             return JsonResponse({
                 "round_id": current_round.pk if current_round else None,
                 "round_type": current_round.type if current_round else "",
+                "stage_label": context.get("stage_label", ""),
                 "needs_tiebreak": context.get('needs_tiebreak', False),
                 "left_column": context["left_column"],
                 "right_column": context["right_column"],

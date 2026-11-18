@@ -10,6 +10,9 @@ import api
 
 class EventStates(StatesGroup):
     names = State()
+    create_count = State()
+    winners_count = State()
+    add_names = State()
     jury_name = State()
     tie = State()
 
@@ -27,24 +30,30 @@ async def error(message, exc):
 async def show_campaign(message, cid, full):
     data = await api.request('GET', f'campaigns/{cid}/event')
     rows = []
-    if not data['rounds'] and full:
-        rows.append([('Подготовить мероприятие: список выступающих', f'ev_prepare_{cid}')])
     for rd in data['rounds']:
+        if rd.get('parent_tour'):
+            continue
         mark = '✓' if rd['completed'] else '▶' if rd['status'] == 'active' else '·'
         rows.append([(f"{mark} {rd['name']}", f"ev_round_{rd['id']}")])
+    if full and not any(r['stage'] and not r['completed'] for r in data['rounds']):
+        rows.extend([[('Создать тур: индивидуальные раунды ДА/НЕТ', f'ev_create_individual_{cid}')],
+                     [('Создать тур: общее голосование', f'ev_create_standard_{cid}')]])
+        if not data['rounds']:
+            rows.append([('Загрузить сразу список выступающих', f'ev_prepare_{cid}')])
     for start in range(0, max(len(rows), 1), 50):
-        await message.answer(f"<b>{escape(data['name'])}</b>\nВыберите выступление или тур.",
+        await message.answer(f"<b>{escape(data['name'])}</b>\nВыберите тур. В индивидуальном туре откройте раунд с нужной фамилией.",
                              reply_markup=keyboard(rows[start:start + 50]), parse_mode='HTML')
 
 
 async def show_round(message, rid, full):
     rd = await api.request('GET', f'rounds/{rid}')
     summary = await api.request('GET', f'rounds/{rid}/event_results')
-    labels = {'performance': 'Выступление: да/нет', 'qualification': 'Первый тур: топ-8',
-              'semifinal': 'Второй тур: топ-2', 'final': 'Финал', '': 'Общее голосование'}
-    text = f"<b>{labels[rd['event_stage']]}</b> · Раунд №{rd['number']}\nСтатус: {rd['status']}\n"
-    if rd['type'] == 'standard' and rd['event_stage'] != 'qualification':
-        text += f"Можно выбрать участников: {rd['max_choices']}\n"
+    stage = rd['event_stage']
+    text = f"<b>{escape(rd.get('display_name', 'Раунд №' + str(rd['number'])))}</b>\nСтатус: {rd['status']}\n"
+    if rd['type'] == 'standard':
+        text += f"Проходят по голосам: топ-{rd['winners_count']}\n"
+        if stage != 'qualification':
+            text += f"Максимум выбранных участников: {rd['max_choices']}\n"
     text += '\n'.join(f"{p['position']}. {escape(p['name'][:70])} — {p['yes']} за, {p['no']} против"
                       + (' ★' if rd['event_completed'] and p['winner'] else '') for p in summary['participants'][:25])
     if len(summary['participants']) > 25:
@@ -53,25 +62,44 @@ async def show_round(message, rid, full):
     if jury_name:
         text += f'\n\nВыбор главного администратора: {escape(jury_name)}'
     rows = []
-    if rd['event_stage']:
+    if stage == 'qualification':
+        data = await api.request('GET', f"campaigns/{rd['campaign']}/event")
+        for child in data['rounds']:
+            if child.get('parent_tour') == rid:
+                mark = '✓' if child['completed'] else '▶' if child['status'] == 'active' else '·'
+                rows.append([(f"{mark} {child['name']}", f"ev_round_{child['id']}")])
+        text += '\n\nВыберите раунд по ФИО, откройте голосование ДА/НЕТ, затем завершите этот раунд. Тур завершайте после всех выступлений.'
+    if full and not rd['event_completed'] and not rd['ended_at']:
+        if stage == 'qualification' or (stage == 'semifinal' and rd['status'] == 'pending'):
+            rows.append([('Добавить участника / список', f'ev_add_{rid}')])
+        if rd['type'] == 'standard' and stage != 'final':
+            rows.append([('Настроить количество проходящих: топ-N', f'ev_count_{rid}')])
+    if stage:
         if rd['status'] == 'pending':
-            rows.append([('Открыть голосование', f'ev_start_{rid}')])
-        elif not rd['event_completed']:
-            rows.append([('Завершить и подготовить следующий тур', f'ev_end_{rid}')])
+            rows.append([('Открыть голосование ДА/НЕТ' if stage == 'performance' else 'Открыть общее голосование', f'ev_start_{rid}')])
+        elif not rd['event_completed'] and not rd['ended_at']:
+            label = 'Завершить этот раунд' if stage == 'performance' else 'Завершить ТУР и перенести топ-N'
+            rows.append([(label, f'ev_end_{rid}')])
         if summary['tie_slots'] and rd['ended_at'] and not rd['event_completed']:
             text += f"\n\nРавенство голосов. Нужно выбрать {summary['tie_slots']} из списка равных."
             if full:
                 rows.append([('Разрешить равенство голосов', f'ev_tie_{rid}')])
-    if full and rd.get('can_edit_jury', rd['type'] == 'standard' and rd['event_stage'] in {'', 'semifinal'}):
+    else:
+        if rd['status'] in {'pending', 'published'}:
+            rows.append([('Открыть голосование', f'ev_start_{rid}')])
+        if rd['status'] in {'active', 'published'}:
+            rows.append([('Завершить раунд / перенести победителей', f'ev_legacyend_{rid}')])
+    if full and rd.get('can_edit_jury', rd['type'] == 'standard' and stage in {'', 'semifinal'}):
         rows.append([('Дополнительный победитель: выбрать участника', f'ev_jury_{rid}')])
-        if rd['event_stage'] == 'semifinal':
-            rows.append([('Дополнительный финалист: ввести фамилию и имя', f'ev_name_{rid}')])
+        if stage == 'semifinal':
+            rows.append([('Дополнительный финалист: фамилия и имя', f'ev_name_{rid}')])
         if rd['jury_choice'] or rd['jury_name']:
             rows.append([('Убрать дополнительного победителя', f'ev_clearjury_{rid}')])
     if rd['next_round']:
-        rows.append([('Открыть следующий тур / таблицу', f"ev_round_{rd['next_round']}")])
+        rows.append([('К туру и остальным раундам' if stage == 'performance' else 'Открыть следующий тур', f"ev_round_{rd['next_round']}")])
     rows.append([('К мероприятию', f"ev_camp_{rd['campaign']}")])
-    await message.answer(text, reply_markup=keyboard(rows), parse_mode='HTML')
+    for start in range(0, max(len(rows), 1), 50):
+        await message.answer(text if start == 0 else 'Продолжение списка раундов:', reply_markup=keyboard(rows[start:start+50]), parse_mode='HTML')
 
 
 def register_event_menu(dp, full_access, admin_access, is_full_admin):
@@ -113,6 +141,67 @@ def register_event_menu(dp, full_access, admin_access, is_full_admin):
             await show_round(call.message, int(call.data.split('_')[2]), is_full_admin(call.from_user.id))
         except api.APIError as exc:
             await error(call.message, exc)
+
+    @dp.callback_query(F.data.regexp(r'^ev_create_(individual|standard)_[0-9]+$'), full_access)
+    async def create(call, state):
+        await call.answer()
+        _, _, mode, cid = call.data.split('_')
+        await state.clear()
+        await state.update_data(campaign_id=int(cid), mode=mode)
+        await state.set_state(EventStates.create_count)
+        await call.message.answer('Сколько участников проходят по голосам в следующий тур? Введите N (например, 8 для первого тура или 2 для второго). Отмена: /event.')
+
+    @dp.message(EventStates.create_count, F.text, ~F.text.startswith('/'), full_access)
+    async def create_save(message, state):
+        if not message.text.strip().isdigit() or not 1 <= int(message.text.strip()) <= 100:
+            await message.answer('Введите целое число от 1 до 100.')
+            return
+        data = await state.get_data()
+        try:
+            result = await api.request('POST', f"campaigns/{data['campaign_id']}/create_tour",
+                                       {'mode': data['mode'], 'winners_count': int(message.text.strip())})
+            await state.clear()
+            await show_round(message, result['tour_id'], True)
+        except api.APIError as exc:
+            await error(message, exc)
+
+    @dp.callback_query(F.data.regexp(r'^ev_(add|count)_[0-9]+$'), full_access)
+    async def edit_tour(call, state):
+        await call.answer()
+        _, action, rid = call.data.split('_')
+        await state.clear()
+        await state.update_data(round_id=int(rid))
+        await state.set_state(EventStates.add_names if action == 'add' else EventStates.winners_count)
+        text = ('Пришлите фамилию и имя или список, каждый с новой строки. Для каждого участника индивидуального тура будет создан отдельный раунд ДА/НЕТ.'
+                if action == 'add' else 'Сколько участников проходят по голосам? Введите N от 1 до 100.')
+        await call.message.answer(text + ' Отмена: /event.')
+
+    @dp.message(EventStates.add_names, F.text, ~F.text.startswith('/'), full_access)
+    async def add_names(message, state):
+        data = await state.get_data()
+        try:
+            result = await api.request('POST', f"rounds/{data['round_id']}/add_entries",
+                                       {'names': [n.strip() for n in message.text.splitlines() if n.strip()]})
+            await state.clear()
+            await message.answer(result['message'])
+            await show_round(message, data['round_id'], True)
+        except api.APIError as exc:
+            await error(message, exc)
+
+    @dp.message(EventStates.winners_count, F.text, ~F.text.startswith('/'), full_access)
+    async def count_save(message, state):
+        if not message.text.strip().isdigit() or not 1 <= int(message.text.strip()) <= 100:
+            await message.answer('Введите целое число от 1 до 100.')
+            return
+        data = await state.get_data()
+        try:
+            result = await api.request('PATCH', f"rounds/{data['round_id']}/update_winners_count",
+                                       {'winners_count': int(message.text.strip())})
+            await state.clear()
+            await message.answer(result['message'])
+            await show_round(message, data['round_id'], True)
+        except api.APIError as exc:
+            await error(message, exc)
 
     @dp.callback_query(F.data.regexp(r'^ev_prepare_[0-9]+$'), full_access)
     async def prepare(call, state):

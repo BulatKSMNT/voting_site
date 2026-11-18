@@ -45,6 +45,53 @@ class CampaignAccessTests(TestCase):
         self.assertEqual(self.vote().status_code, 201)
         self.assertEqual(self.vote(404).status_code, 201)
 
+    def test_self_access_works_without_open_round_and_never_exposes_allowlist(self):
+        self.configure([303])
+        self.rd.status = 'pending'
+        self.rd.save()
+        self.actor(303)
+        before_events = AuditEvent.objects.count()
+        response = self.api.get('/voting/api/campaigns/my_access/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(AuditEvent.objects.count(), before_events)
+        self.assertEqual(response.data, {'campaigns': [
+            {'id': self.campaign.pk, 'name': self.campaign.name, 'can_vote': True}]})
+        self.actor(404)
+        response = self.api.get('/voting/api/campaigns/my_access/?user_id=303&user_telegram_id=303')
+        self.assertFalse(response.data['campaigns'][0]['can_vote'])
+        self.configure([], mode='public')
+        self.assertTrue(self.api.get('/voting/api/campaigns/my_access/').data['campaigns'][0]['can_vote'])
+
+    def test_self_access_is_campaign_specific_and_admins_have_no_vote_bypass(self):
+        self.configure([303])
+        other = Campaign.objects.create(name='Other', admin_telegram_id=101, access_mode='private')
+        self.actor(303)
+        url = '/voting/api/campaigns/my_access/'
+        self.assertEqual(len(self.api.get(url).data['campaigns']), 2)
+        response = self.api.get(url, {'campaign_id': other.pk})
+        self.assertEqual(response.data['campaigns'], [{'id': other.pk, 'name': 'Other', 'can_vote': False}])
+        for actor in (101, 202):
+            self.actor(actor)
+            self.assertFalse(self.api.get(url, {'campaign_id': self.campaign.pk}).data['campaigns'][0]['can_vote'])
+        self.campaign.is_active = False
+        self.campaign.save()
+        self.assertEqual(self.api.get(url, {'campaign_id': self.campaign.pk}).status_code, 404)
+        for invalid in ('bad', '-1', str(2**63)):
+            self.assertEqual(self.api.get(url, {'campaign_id': invalid}).status_code, 400)
+        other.is_active = False
+        other.save()
+        self.assertEqual(self.api.get(url).data, {'campaigns': []})
+
+    def test_self_access_requires_authenticated_bot_identity(self):
+        url = '/voting/api/campaigns/my_access/'
+        self.api.credentials()
+        self.assertEqual(self.api.get(url).status_code, 401)
+        self.api.credentials(HTTP_AUTHORIZATION='Token '+'a'*40)
+        self.assertEqual(self.api.get(url).status_code, 403)
+        user = get_user_model().objects.create_user('not_bot', is_staff=True)
+        self.api.force_authenticate(user)
+        self.assertEqual(self.api.get(url).status_code, 403)
+
     def test_private_accepts_only_listed_ids_and_audits_rejections(self):
         self.configure([303])
         self.assertEqual(self.vote().status_code, 201)

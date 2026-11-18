@@ -79,6 +79,60 @@ class BotTests(IsolatedAsyncioTestCase):
                 api = await self.dispatch(data, state=state, message_id=i+1)
                 api.assert_not_awaited()
 
+    async def test_access_button_allowed_denied_and_campaign_selection(self):
+        buttons = [button.text for row in self.bot.vote_keyboard.keyboard for button in row]
+        self.assertEqual(buttons, ['Проголосовать', 'Проверить доступ'])
+        for allowed in (True, False):
+            with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={
+                    'campaigns': [{'id': 1, 'name': '<Event>', 'can_vote': allowed}]}):
+                with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                    await self.send_text('Проверить доступ', actor=303)
+                text = telegram.call_args.args[1].text
+                self.assertIn('разрешён' if allowed else 'Напишите @khat911, проверим вас с утвержденным списком', text)
+                if allowed:
+                    self.assertIn('&lt;Event&gt;', text)
+        with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value={'campaigns': [
+                {'id': 1, 'name': 'One', 'can_vote': True}, {'id': 2, 'name': 'Two', 'can_vote': False}]}):
+            with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                await self.send_text('/check_access', actor=303)
+            rows = telegram.call_args.args[1].reply_markup.inline_keyboard
+            self.assertEqual([row[0].callback_data for row in rows], ['access_check_1', 'access_check_2'])
+        api = await self.dispatch('access_check_2', actor=303, api_result={
+            'campaigns': [{'id': 2, 'name': 'Two', 'can_vote': False}]})
+        api.assert_awaited_once_with('GET', 'campaigns/my_access?campaign_id=2')
+
+    async def test_access_check_empty_or_service_failure_is_not_denied(self):
+        for value in ({'campaigns': []}, self.bot.api.APIError('down', status=503)):
+            with patch.object(self.bot.api, 'request', new_callable=AsyncMock) as api:
+                if isinstance(value, dict):
+                    api.return_value = value
+                else:
+                    api.side_effect = value
+                with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                    await self.send_text('/check_access', actor=303)
+                self.assertNotIn('@khat911', telegram.call_args.args[1].text)
+
+    async def test_help_and_command_picker_only_show_current_role_actions(self):
+        module = importlib.import_module('commands')
+        removed = {'end_current_round', 'start_round', 'add_participant', 'set_winners_count', 'del_participant', 'resurrect_round', 'jury_winner'}
+        for actor, role in ((303, 'viewer'), (202, 'limited'), (101, 'full')):
+            commands = {c.command for c in module.command_list(role)}
+            self.assertFalse(commands & removed)
+            self.assertEqual('event' in commands, role != 'viewer')
+            self.assertEqual('export' in commands, role == 'full')
+            with patch.object(self.bot.bot.session, 'make_request', new_callable=AsyncMock, return_value=True) as telegram:
+                await self.send_text('/help', actor=actor)
+            text = telegram.call_args.args[1].text
+            self.assertTrue(all('/'+c in text for c in commands))
+            self.assertFalse(any('/'+c in text for c in removed))
+        client = AsyncMock()
+        await module.sync_commands(client, {101}, {202})
+        for call in client.set_my_commands.call_args_list:
+            uid = getattr(call.kwargs['scope'], 'chat_id', None)
+            commands = {c.command for c in call.args[0]}
+            self.assertEqual('export' in commands, uid == 101)
+            self.assertEqual('event' in commands, uid in (101, 202))
+
     async def test_moderator_can_show_but_not_resurrect(self):
         api = await self.dispatch('setc_2_active', actor=202)
         api.assert_awaited_once()
@@ -134,7 +188,7 @@ class BotTests(IsolatedAsyncioTestCase):
         data = {'status': 'active', 'round_type': 'standard', 'can_vote': False, 'participants': [], 'round_name': 'Event'}
         with patch.object(self.bot.api, 'request', new_callable=AsyncMock, return_value=data):
             text, keyboard = await self.bot.get_vote_menu(303)
-            self.assertIn('приватное', text)
+            self.assertEqual(text, 'Напишите @khat911, проверим вас с утвержденным списком')
             self.assertIsNone(keyboard)
             data['status'] = 'published'
             text, keyboard = await self.bot.get_vote_menu(303)

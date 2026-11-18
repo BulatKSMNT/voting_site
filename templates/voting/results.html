@@ -42,7 +42,7 @@
     const buildRow = (row) => {
         const item = document.createElement('div');
         item.className = 'snake-item' + (row.winner ? ' is-winner' : '');
-        const label = row.participant_full_name + (row.winner ? ' ★' : '') + (row.jury_winner ? ' · выбор администратора' : '');
+        const label = row.participant_full_name;
         for (const [name, value] of [['position', row.position], ['name', label], ['votes', row.votes]]) {
             const cell = document.createElement('span');
             cell.className = name;

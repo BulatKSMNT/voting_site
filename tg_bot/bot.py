@@ -25,6 +25,8 @@ from middlewares import AntiFloodMiddleware, RoleLoggingMiddleware, AdminFilter
 from campaign_access import register_campaign_access, CampaignAccessStates
 from voting.access import VOTER_NOT_ALLOWED
 from event_menu import register_event_menu, EventStates, show_campaign, show_round
+from voter_access import register_voter_access
+from commands import COMMON_COMMANDS, MODERATOR_COMMANDS, FULL_ADMIN_COMMANDS, sync_commands
 
 BOT_TOKEN = config("TELEGRAM_TOKEN")
 
@@ -67,10 +69,23 @@ dp.callback_query.middleware(AntiFloodMiddleware(limit_seconds=1.0))
 
 dp.startup.register(api.on_startup)
 dp.shutdown.register(api.on_shutdown)
+vote_keyboard = ReplyKeyboardMarkup(keyboard=[[
+    KeyboardButton(text=lexicon.BTN_VOTE), KeyboardButton(text=lexicon.BTN_CHECK_ACCESS)
+]], resize_keyboard=True)
+register_voter_access(dp, vote_keyboard)
 register_campaign_access(dp, full_access)
 register_event_menu(dp, full_access, admin_access, is_full_admin)
 
-vote_keyboard = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=lexicon.BTN_VOTE)]], resize_keyboard=True)
+
+async def update_command_menu():
+    try:
+        await sync_commands(bot, FULL_ADMINS, LIMITED_ADMINS)
+    except Exception as exc:
+        # A Telegram outage must not prevent polling from starting.
+        event('bot.command_menu_failed', level=logging.ERROR, error_type=type(exc).__name__)
+
+
+dp.startup.register(update_command_menu)
 
 
 class StartRoundStates(StatesGroup):
@@ -162,7 +177,7 @@ async def get_vote_menu(user_id: int):
             else:
                 # ЕСЛИ ЕЩЕ НЕ ГОЛОСОВАЛ:
                 # Показываем стандартный вопрос и добавляем кнопки Да/Нет
-                text += f"Готовы ли вы пригласить на свое мероприятие такого ведущего, как\n<b>{escape(p['full_name'])}</b>?"
+                text += f"<b>{escape(p['full_name'])}</b> - ДА/НЕТ?"
                 row = [
                     InlineKeyboardButton(text="Да", callback_data=f"vote_{data['round_id']}_{p['id']}_yes"),
                     InlineKeyboardButton(text="Нет", callback_data=f"vote_{data['round_id']}_{p['id']}_no")
@@ -201,36 +216,16 @@ async def cmd_myid(message: Message):
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     user_id = message.from_user.id
-    text = "📖 <b>Справка по командам бота:</b>\n\n"
-    text += (
-        "👤 <b>Для зрителей:</b>\n"
-        "▪️ /start — Перезапуск бота\n"
-        "▪️ /vote (или кнопка) — Открыть меню голосования\n"
-        "▪️ /myid — Узнать свой ID\n"
-        "▪️ /help — Это меню\n"
-    )
+    def section(title, commands):
+        return title + '\n' + '\n'.join(f'▪️ /{command} — {description}' for command, description in commands) + '\n'
+    text = section('👤 <b>Для зрителей:</b>', COMMON_COMMANDS)
     if is_any_admin(user_id):
-        text += (
-            "\n🛠 <b>Для модераторов:</b>\n"
-            "▪️ /event — Туры → раунды по ФИО, топ-N, финал\n"
-            "▪️ /set_current_round — Выбрать раунд для показа на главном экране\n"
-            "▪️ /end_current_round — Завершить текущий/выбранный раунд и перенести победителей\n"
-            "▪️ /hide_round — Скрыть раунд с сайта\n"
-        )
+        text += '\n' + section('🛠 <b>Для модераторов:</b>', MODERATOR_COMMANDS)
+        text += 'Открытие, завершение раундов и переход между турами — внутри /event.\n'
     if is_full_admin(user_id):
-        text += (
-            "\n👑 <b>Для главных админов:</b>\n"
-            "▪️ /create_campaign — Создать новую кампанию\n"
-            "▪️ /campaign_access — Режим доступа и список Telegram ID кампании\n"
-            "▪️ /jury_winner — Дополнительный победитель по выбору администратора\n"
-            "▪️ /start_round — Запустить раунд\n"
-            "▪️ /add_participant — Вписать участников (можно списком!)\n"
-            "▪️ /set_winners_count — Настроить топ-N по уровням баллов\n"
-            "▪️ /del_participant — ❌ Удалить участника\n"
-            "▪️ /resurrect_round — 🧟‍♂️ Восстановить раунд\n"
-            "▪️ /export — 📊 Отчёт по мероприятию: результаты и голоса\n"
-        )
-    await message.answer(text, parse_mode="HTML")
+        text += '\n' + section('👑 <b>Для главных админов:</b>', FULL_ADMIN_COMMANDS)
+        text += 'Создание туров, участники, топ-N и дополнительный победитель — внутри /event.\n'
+    await message.answer(text, parse_mode="HTML", reply_markup=vote_keyboard)
 
 
 @dp.message(Command("start"))

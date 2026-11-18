@@ -58,6 +58,33 @@ class EventTests(TestCase):
             Vote.objects.bulk_create([Vote(round=rd, participant=p, user_telegram_id=10000 + i * 100 + j) for j in range(count)])
         return rd
 
+    def test_site_moves_administrator_choice_last_without_changing_results(self):
+        rd = self.semifinal()
+        people = list(rd.participants.all())
+        self.action(rd, 'jury', {'participant_id': people[3].pk})
+        before = results(rd)
+        _, rows = self.board(rd)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(rows[-1]['participant_full_name'], people[3].full_name)
+        self.assertEqual((rows[-1]['position'], rows[-1]['votes']), (4, 4))
+        self.assertEqual(results(rd), before)
+        page = self.client.get(f'/voting/results/?round_id={rd.pk}')
+        self.assertNotContains(page, 'выбор администратора')
+        self.assertNotContains(page, '★')
+        self.assertEqual(page.context['right_column'][-1]['participant_full_name'], people[3].full_name)
+        outcome = self.action(rd, 'event_finish')
+        final = Round.objects.get(pk=outcome['next_round_id'])
+        finalist = final.participants.get(is_admin_choice=True)
+        self.action(final, 'event_start')
+        self.vote(finalist, 303)
+        _, rows = self.board(final)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[-1]['participant_full_name'], finalist.full_name)
+        self.assertEqual((rows[-1]['position'], rows[-1]['votes']), (1, 1))
+        outcome = self.action(final, 'event_finish')
+        self.assertEqual(outcome['winners'][0]['id'], finalist.pk)
+        self.assertTrue(self.board(final)[1][-1]['winner'])
+
     def test_full_25_performers_to_eight_to_two_plus_one_to_winner(self):
         self.campaign.access_mode = 'private'
         self.campaign.allowed_telegram_ids = list(range(1000, 1026)) + [2000]

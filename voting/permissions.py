@@ -31,6 +31,8 @@ class VotingPermission(BasePermission):
         actor = bind_identity(request)
         if not request.user.is_authenticated or (actor["source"] == "bot" and actor["actor_id"] is None):
             return False
+        if view.basename == 'campaign' and view.action == 'my_access':
+            return actor['source'] == 'bot'
         if view.basename == "vote":
             return actor["source"] == "bot" or actor["actor_role"] == "full"
         if actor["actor_role"] == "full":

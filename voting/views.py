@@ -56,6 +56,22 @@ class CampaignViewSet(LockedModelViewSet):
     permission_classes = [VotingPermission]
 
     @action(detail=False, methods=['get'])
+    def my_access(self, request):
+        """Only the authenticated bot may check its current Telegram sender."""
+        actor = bind_identity(request)
+        campaigns = self.get_queryset().order_by('order_number')
+        campaign_id = request.query_params.get('campaign_id')
+        if campaign_id is not None:
+            class Selection(serializers.Serializer):
+                campaign_id = serializers.IntegerField(min_value=1, max_value=2**63 - 1)
+            selection = Selection(data={'campaign_id': campaign_id})
+            selection.is_valid(raise_exception=True)
+            campaigns = [get_object_or_404(campaigns, pk=selection.validated_data['campaign_id'])]
+        return Response({'campaigns': [
+            {'id': campaign.pk, 'name': campaign.name, 'can_vote': campaign.can_vote(actor['actor_id'])}
+            for campaign in campaigns]})
+
+    @action(detail=False, methods=['get'])
     def report_choices(self, request):
         return Response({'campaigns': list(Campaign.objects.order_by('-order_number').values('id', 'name', 'is_active'))})
 
@@ -370,7 +386,10 @@ class CurrentRoundResults(View):
 
         if current_round:
             summary = round_results(current_round)
-            participants = displayed_participants(current_round, summary)
+            # Presentation order only: extra entrants are last; score ranks,
+            # winners, transfers and archived reports retain the scoring order.
+            participants = sorted(displayed_participants(current_round, summary),
+                                  key=lambda p: bool(p['jury_winner'] or p['is_admin_choice']))
             context['stage_label'] = current_round.display_name if current_round.event_stage else ''
             context['needs_tiebreak'] = bool(summary['tie_slots'] and current_round.ended_at)
 

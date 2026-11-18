@@ -22,4 +22,4 @@ def parse_telegram_ids(text):
     return normalize_telegram_ids(re.split(r"[\s,;]+", text.strip()) if text.strip() else [])
 
 
-VOTER_NOT_ALLOWED = "Это приватное голосование. Ваш Telegram ID отсутствует в списке участников. Обратитесь к организатору."
+VOTER_NOT_ALLOWED = "Напишите @khat911, проверим вас с утвержденным списком"

@@ -1,4 +1,5 @@
 # lexicon.py
+from voting.access import VOTER_NOT_ALLOWED
 
 ALREADY_VOTED = "Вы уже проголосовали. Голос нельзя изменить."
 PUBLISHED_MSG = "🏁 <b>Голосование завершено!</b>\nВот результаты раунда:\n\n"
@@ -6,6 +7,8 @@ NO_ROUND_MSG = "Сейчас нет активного раунда. Прихо�
 
 # Кнопки
 BTN_VOTE = "Проголосовать"
+BTN_CHECK_ACCESS = "Проверить доступ"
+MSG_ACCESS_DENIED = VOTER_NOT_ALLOWED
 
 # Тексты сообщений
 MSG_START = (
